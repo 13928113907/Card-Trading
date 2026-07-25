@@ -1,8 +1,7 @@
 const FALLBACK_URL = "./data/auctions.example.json";
 const MARKET_URL = "./data/market-year.json";
-const LIVE_URL = "/api/auctions";
-const REFRESH_URL = "/api/refresh";
-const AUTO_REFRESH_MS = 2 * 60 * 1000;
+const LIVE_URL = "./data/auctions.live.json";
+const AUTO_REFRESH_MS = 5 * 60 * 1000;
 
 let auctions = [];
 let watchlist = [];
@@ -412,12 +411,12 @@ function renderWatchlist() {
 }
 
 function renderStatus() {
-  const modeText = dataMode === "live" ? "本地服务实时数据" : "静态样例数据";
+  const modeText = dataMode === "live" ? "静态发布数据" : "静态样例数据";
   refreshStatus.textContent = `${modeText} · 上次更新 ${lastUpdatedAt ? dateTime.format(new Date(lastUpdatedAt)) : "--"}`;
   dataModeNote.textContent =
     dataMode === "live"
-      ? "数据来自本机浏览器监控文件；按钮可触发后台刷新。"
-      : "当前为样例兜底；启动本地服务后会读取实时监控数据。";
+      ? "数据来自随网站发布的监控文件；页面每 5 分钟自动重新读取。"
+      : "当前为样例兜底；发布数据文件缺失时自动读取样例。";
 }
 
 function render() {
@@ -470,15 +469,14 @@ async function loadData() {
 
 async function triggerRefresh() {
   refreshButton.disabled = true;
-  refreshButton.textContent = "刷新中";
+  refreshButton.textContent = "读取中";
   try {
-    await fetch(REFRESH_URL, { method: "POST" });
     await loadData();
   } catch {
     await loadData();
   } finally {
     refreshButton.disabled = false;
-    refreshButton.textContent = "刷新监控";
+    refreshButton.textContent = "重新读取";
   }
 }
 

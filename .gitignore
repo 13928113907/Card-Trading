@@ -9,3 +9,4 @@ node_modules/
 
 # Keep generated site assets and workbook outputs, but ignore transient inspection dumps.
 *.inspect.ndjson
+*.zip
