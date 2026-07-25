@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 220" role="img" aria-labelledby="title desc">
+  <title id="title">Electric mascot card art</title>
+  <desc id="desc">Original abstract electric mascot themed trading card thumbnail.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#f8d84f"/>
+      <stop offset=".62" stop-color="#fff4a8"/>
+      <stop offset="1" stop-color="#8bd2e9"/>
+    </linearGradient>
+  </defs>
+  <rect width="320" height="220" rx="18" fill="url(#bg)"/>
+  <path d="m170 30-35 65 49-9-38 104 85-128-55 13 31-45Z" fill="#f26d21" opacity=".86"/>
+  <circle cx="116" cy="137" r="44" fill="#fffdf0" opacity=".76"/>
+  <circle cx="204" cy="135" r="38" fill="#3a5f95" opacity=".2"/>
+</svg>

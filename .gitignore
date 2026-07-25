@@ -1,0 +1,11 @@
+node_modules
+node_modules/
+.DS_Store
+*.log
+
+# Local runtime/cache files
+.env
+.env.*
+
+# Keep generated site assets and workbook outputs, but ignore transient inspection dumps.
+*.inspect.ndjson
