@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 220" role="img" aria-labelledby="title desc">
+  <title id="title">Fire dragon card art</title>
+  <desc id="desc">Original abstract fire dragon themed trading card thumbnail.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#f25f3a"/>
+      <stop offset="0.58" stop-color="#f3b545"/>
+      <stop offset="1" stop-color="#fff1c2"/>
+    </linearGradient>
+  </defs>
+  <rect width="320" height="220" rx="18" fill="url(#bg)"/>
+  <path d="M64 164c42-82 99-108 181-104-36 14-47 37-40 65 7 25 25 40 51 47-76 18-136 14-192-8Z" fill="#8a1f1d" opacity=".82"/>
+  <path d="M132 119c28-42 63-61 105-60-19 15-25 36-13 62 8 17 21 28 39 34-52 10-98-2-131-36Z" fill="#fff6d8" opacity=".58"/>
+  <path d="M77 57c26 20 42 42 49 66-26-6-49-23-69-52Z" fill="#592018" opacity=".7"/>
+</svg>

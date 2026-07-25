@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>卡牌年度涨幅与拍卖策略看板</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <section class="topbar">
+        <div>
+          <p class="eyebrow">Trading Card Growth Desk</p>
+          <h1>卡牌年度涨幅与拍卖策略看板</h1>
+        </div>
+        <div class="refresh-card">
+          <span id="refreshStatus">等待数据</span>
+          <button id="refreshButton" type="button">刷新监控</button>
+        </div>
+      </section>
+
+      <section class="insight-strip" aria-label="核心结论">
+        <article>
+          <span>一年涨幅最高</span>
+          <strong id="topGrowthCard">--</strong>
+          <small id="topGrowthValue">--</small>
+        </article>
+        <article>
+          <span>绝对利润最高</span>
+          <strong id="topProfitCard">--</strong>
+          <small id="topProfitValue">--</small>
+        </article>
+        <article>
+          <span>急涨概率最高</span>
+          <strong id="topCatalystCard">--</strong>
+          <small id="topCatalystValue">--</small>
+        </article>
+      </section>
+
+      <section class="panel strategy-panel" aria-label="年度涨幅策略">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">One-Year Performance</p>
+            <h2>One Piece / PTCG / Topps 篮球年度涨幅排行</h2>
+          </div>
+          <p id="marketDataNote">数据读取中。</p>
+        </div>
+        <div class="toolbar market-toolbar" aria-label="年度涨幅筛选">
+          <label>
+            <span>资产类型</span>
+            <select id="marketClassFilter"></select>
+          </label>
+          <label>
+            <span>策略排序</span>
+            <select id="marketSortBy">
+              <option value="growth">一年涨幅最高</option>
+              <option value="profit">绝对利润最高</option>
+              <option value="catalyst">急涨概率最高</option>
+              <option value="sellSoon">更快出手</option>
+            </select>
+          </label>
+        </div>
+        <div class="table-wrap">
+          <table class="market-table">
+            <thead>
+              <tr>
+                <th>资产</th>
+                <th>卡片</th>
+                <th>一年前</th>
+                <th>当前</th>
+                <th>一年涨幅</th>
+                <th>未实现利润</th>
+                <th>主流度</th>
+                <th>催化</th>
+                <th>建议持仓</th>
+                <th>目标出手价</th>
+                <th>止损价</th>
+                <th>出手窗口</th>
+                <th>来源</th>
+              </tr>
+            </thead>
+            <tbody id="marketBody"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="analysis-layout">
+        <section class="panel" aria-label="催化事件">
+          <div class="section-heading compact">
+            <div>
+              <p class="eyebrow">Catalysts</p>
+              <h2>后续急涨触发点</h2>
+            </div>
+          </div>
+          <div id="eventList" class="event-list"></div>
+        </section>
+        <section class="panel" aria-label="操作建议">
+          <div class="section-heading compact">
+            <div>
+              <p class="eyebrow">Action Plan</p>
+              <h2>持仓天数与出手建议</h2>
+            </div>
+          </div>
+          <div id="actionList" class="rank-list"></div>
+        </section>
+      </section>
+
+      <section class="metric-grid" aria-label="关键指标">
+        <article>
+          <span>监控拍卖</span>
+          <strong id="metricListings">0</strong>
+        </article>
+        <article>
+          <span>正利润机会</span>
+          <strong id="metricPositive">0</strong>
+        </article>
+        <article>
+          <span>最高实际利润</span>
+          <strong id="metricProfit">¥0</strong>
+        </article>
+        <article>
+          <span>最近结束</span>
+          <strong id="metricEnding">--</strong>
+        </article>
+        <article>
+          <span>平均手续费率</span>
+          <strong id="metricFeeRate">0.0%</strong>
+        </article>
+      </section>
+
+      <section class="toolbar" aria-label="筛选工具">
+        <label class="search-box">
+          <span>搜索</span>
+          <input id="searchInput" type="search" placeholder="卡名、训练家、平台、系列、证书号" />
+        </label>
+        <label>
+          <span>分类</span>
+          <select id="categoryFilter"></select>
+        </label>
+        <label>
+          <span>平台</span>
+          <select id="platformFilter"></select>
+        </label>
+        <label>
+          <span>排序</span>
+          <select id="sortBy">
+            <option value="actualProfit">实际利润最高</option>
+            <option value="roi">ROI 最高</option>
+            <option value="endingSoon">剩余时间最短</option>
+            <option value="fee">手续费最低</option>
+            <option value="holdingDays">持仓天数最长</option>
+          </select>
+        </label>
+      </section>
+
+      <nav id="typeTabs" class="category-tabs" aria-label="资产类型"></nav>
+
+      <section class="split-layout">
+        <section class="panel" aria-label="实时拍卖">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Live Auctions</p>
+              <h2>人气训练家与宝可梦拍卖情况</h2>
+            </div>
+            <p id="dataModeNote">实时字段来自本机浏览器监控或样例兜底。</p>
+          </div>
+          <div class="table-wrap">
+            <table class="auction-table">
+              <thead>
+                <tr>
+                  <th>分类</th>
+                  <th>卡片</th>
+                  <th>平台</th>
+                  <th>当前拍卖价</th>
+                  <th>预估卖出</th>
+                  <th>毛利</th>
+                  <th>手续费</th>
+                  <th>实际利润</th>
+                  <th>ROI</th>
+                  <th>持仓</th>
+                  <th>结束</th>
+                  <th>状态</th>
+                  <th>链接</th>
+                </tr>
+              </thead>
+              <tbody id="auctionBody"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <aside class="panel side-panel" aria-label="分类排行">
+          <div class="section-heading compact">
+            <div>
+              <p class="eyebrow">Categories</p>
+              <h2>分类利润排行</h2>
+            </div>
+          </div>
+          <div id="categoryRank" class="rank-list"></div>
+        </aside>
+      </section>
+
+      <section class="panel" aria-label="候选观察清单">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Watchlist</p>
+            <h2>候选观察清单</h2>
+          </div>
+          <button id="exportWatchlist" type="button">导出清单</button>
+        </div>
+        <div id="watchlistGrid" class="watchlist-grid"></div>
+      </section>
+    </main>
+
+    <template id="watchTemplate">
+      <article class="watch-card">
+        <div class="watch-head">
+          <span class="tag"></span>
+          <strong></strong>
+        </div>
+        <p class="watch-meta"></p>
+        <dl>
+          <div><dt>目标买入</dt><dd class="target-buy"></dd></div>
+          <div><dt>目标卖出</dt><dd class="target-sell"></dd></div>
+          <div><dt>触发条件</dt><dd class="trigger"></dd></div>
+        </dl>
+        <a class="link-button" target="_blank" rel="noreferrer">打开搜索</a>
+      </article>
+    </template>
+
+    <script src="./app.js"></script>
+  </body>
+</html>

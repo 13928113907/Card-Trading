@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 220" role="img" aria-labelledby="title desc">
+  <title id="title">Dream creature card art</title>
+  <desc id="desc">Original abstract dream creature themed trading card thumbnail.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#ee8cb7"/>
+      <stop offset=".6" stop-color="#ffd7e8"/>
+      <stop offset="1" stop-color="#dff4ed"/>
+    </linearGradient>
+  </defs>
+  <rect width="320" height="220" rx="18" fill="url(#bg)"/>
+  <path d="M82 134c30-66 73-91 129-75 35 10 56 36 63 78-36-31-72-39-107-24-33 14-61 21-85 21Z" fill="#a3457a" opacity=".48"/>
+  <circle cx="143" cy="105" r="48" fill="#fff" opacity=".68"/>
+  <path d="M177 75c29 16 43 38 43 65-24-7-43-25-58-54Z" fill="#6b3f91" opacity=".48"/>
+</svg>
