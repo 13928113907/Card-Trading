@@ -40,6 +40,21 @@ function validateCard(card, filePath, index) {
     }
   }
 
+  if (card.sourceName === "SportsCardsPro") {
+    if (!card.sourceUrl?.startsWith("https://www.sportscardspro.com/game/")) {
+      errors.push(`${label}: SportsCardsPro sourceUrl must be a direct /game/... card page`);
+    }
+    if (card.sourceUrl && /[?&]q=/i.test(card.sourceUrl)) {
+      errors.push(`${label}: sourceUrl cannot contain a search query`);
+    }
+    if (card.priceNode !== "PSA 10") {
+      errors.push(`${label}: priceNode must explicitly be PSA 10`);
+    }
+    if (card.priceStatus === "verified" && (!Number.isFinite(card.startUsd) || !Number.isFinite(card.currentUsd))) {
+      errors.push(`${label}: verified rows must include numeric startUsd and currentUsd`);
+    }
+  }
+
   return errors;
 }
 
