@@ -173,9 +173,9 @@ function marketClasses() {
 }
 
 function enrichMarket(item) {
-  const hasVerifiedYear = item.priceStatus === "verified" && isNumber(item.startUsd) && item.startUsd > 0 && isNumber(item.currentUsd);
-  const growthPct = hasVerifiedYear ? (item.currentUsd - item.startUsd) / item.startUsd : null;
-  const unrealizedProfitUsd = hasVerifiedYear ? item.currentUsd - item.startUsd : null;
+  const hasComparableYear = ["verified", "estimated"].includes(item.priceStatus) && isNumber(item.startUsd) && item.startUsd > 0 && isNumber(item.currentUsd);
+  const growthPct = hasComparableYear ? (item.currentUsd - item.startUsd) / item.startUsd : null;
+  const unrealizedProfitUsd = hasComparableYear ? item.currentUsd - item.startUsd : null;
   const targetSellUsd = isNumber(item.currentUsd) ? item.currentUsd * (1 + item.targetReturnPct) : null;
   const stopLossBase = isNumber(item.costBasisUsd) ? item.costBasisUsd : item.startUsd;
   const stopLossUsd = isNumber(stopLossBase) ? stopLossBase * (1 + item.stopLossPct) : null;
@@ -184,7 +184,8 @@ function enrichMarket(item) {
       item.liquidity * 0.28 +
       Math.min((growthPct || 0) * 100, 160) * 0.22 -
       item.popRisk * 0.08 -
-      (hasVerifiedYear ? 0 : 18)
+      (hasComparableYear ? 0 : 18) -
+      (item.priceStatus === "estimated" ? 6 : 0)
   );
   const holdLabel =
     item.holdMaxDays <= 100
@@ -194,7 +195,7 @@ function enrichMarket(item) {
         : "中长线";
   return {
     ...item,
-    hasVerifiedYear,
+    hasComparableYear,
     growthPct,
     unrealizedProfitUsd,
     targetSellUsd,
@@ -249,9 +250,9 @@ function renderSelect(select, options, value) {
 
 function renderMarketInsights(rows) {
   const all = marketCards.map(enrichMarket);
-  const verifiedRows = all.filter((row) => row.hasVerifiedYear);
-  const topGrowth = verifiedRows.reduce((best, row) => (!best || row.growthPct > best.growthPct ? row : best), null);
-  const topProfit = verifiedRows.reduce((best, row) => (!best || row.unrealizedProfitUsd > best.unrealizedProfitUsd ? row : best), null);
+  const comparableRows = all.filter((row) => row.hasComparableYear);
+  const topGrowth = comparableRows.reduce((best, row) => (!best || row.growthPct > best.growthPct ? row : best), null);
+  const topProfit = comparableRows.reduce((best, row) => (!best || row.unrealizedProfitUsd > best.unrealizedProfitUsd ? row : best), null);
   const topCatalyst = all.reduce((best, row) => (!best || row.heatScore > best.heatScore ? row : best), null);
   document.querySelector("#topGrowthCard").textContent = topGrowth ? topGrowth.cardName : "--";
   document.querySelector("#topGrowthValue").textContent = topGrowth ? pct.format(topGrowth.growthPct) : "等待一年前节点";
@@ -261,9 +262,10 @@ function renderMarketInsights(rows) {
     : "等待一年前节点";
   document.querySelector("#topCatalystCard").textContent = topCatalyst ? topCatalyst.cardName : "--";
   document.querySelector("#topCatalystValue").textContent = topCatalyst ? `${topCatalyst.heatScore} 分` : "--";
-  const pending = all.filter((row) => !row.hasVerifiedYear).length;
+  const pending = all.filter((row) => !row.hasComparableYear).length;
+  const estimated = all.filter((row) => row.priceStatus === "estimated").length;
   marketDataNote.textContent = marketMeta
-    ? `本机数据 ${new Date(marketMeta.lastUpdatedAt).toLocaleString("zh-CN")} · ${rows.length} 张卡 · ${pending} 张待复核一年前 PSA10 节点`
+    ? `本机数据 ${new Date(marketMeta.lastUpdatedAt).toLocaleString("zh-CN")} · ${rows.length} 张卡 · ${estimated} 张一年价为估算 · ${pending} 张待补`
     : "未加载年度数据";
 }
 
@@ -275,13 +277,18 @@ function renderMarketTable(rows) {
   }
   rows.forEach((row) => {
     const tr = document.createElement("tr");
-    tr.className = [row.heatScore >= 90 ? "hot" : "", row.hasVerifiedYear ? "" : "pending-row"].filter(Boolean).join(" ");
-    const sourceStatus = row.hasVerifiedYear ? "PSA10节点已核" : "待复核一年节点";
+    tr.className = [row.heatScore >= 90 ? "hot" : "", row.hasComparableYear ? "" : "pending-row"].filter(Boolean).join(" ");
+    const sourceStatus =
+      row.priceStatus === "verified"
+        ? "PSA10节点已核"
+        : row.priceStatus === "estimated"
+          ? `当前已核/一年估算${row.confidence ? `/${row.confidence}` : ""}`
+          : "待复核一年节点";
     tr.innerHTML = `
       <td><span class="tag">${row.assetClass}</span></td>
       <td>
         <strong>${row.cardName}</strong>
-        <small>${row.nearTermCatalyst}</small>
+        <small>${row.estimateBasis || row.nearTermCatalyst}</small>
       </td>
       <td class="money">${usdOrPending(row.startUsd)}</td>
       <td class="money">${usdOrPending(row.currentUsd)}</td>
