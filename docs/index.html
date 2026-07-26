@@ -40,8 +40,8 @@
       <section class="panel strategy-panel" aria-label="年度涨幅策略">
         <div class="section-heading">
           <div>
-            <p class="eyebrow">One-Year Performance</p>
-            <h2>One Piece / PTCG / Topps 篮球年度涨幅排行</h2>
+            <p class="eyebrow">PriceCharting PSA10 Node Check</p>
+            <h2>宝可梦 PSA10 年度涨幅复核表</h2>
           </div>
           <p id="marketDataNote">数据读取中。</p>
         </div>
@@ -54,7 +54,8 @@
             <span>策略排序</span>
             <select id="marketSortBy">
               <option value="growth">一年涨幅最高</option>
-              <option value="profit">绝对利润最高</option>
+              <option value="profit">一年价差最高</option>
+              <option value="current">当前 PSA10 价最高</option>
               <option value="catalyst">急涨概率最高</option>
               <option value="sellSoon">更快出手</option>
             </select>
@@ -66,17 +67,17 @@
               <tr>
                 <th>资产</th>
                 <th>卡片</th>
-                <th>一年前</th>
-                <th>当前</th>
+                <th>一年前 PSA10</th>
+                <th>当前 PSA10</th>
                 <th>一年涨幅</th>
-                <th>未实现利润</th>
+                <th>一年价差</th>
                 <th>主流度</th>
                 <th>催化</th>
                 <th>建议持仓</th>
                 <th>目标出手价</th>
                 <th>止损价</th>
                 <th>出手窗口</th>
-                <th>来源</th>
+                <th>直达页/状态</th>
               </tr>
             </thead>
             <tbody id="marketBody"></tbody>

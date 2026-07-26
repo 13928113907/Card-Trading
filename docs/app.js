@@ -67,6 +67,18 @@ function usd(value) {
   }).format(value);
 }
 
+function isNumber(value) {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
+function usdOrPending(value) {
+  return isNumber(value) ? usd(value) : "待复核";
+}
+
+function pctOrPending(value) {
+  return isNumber(value) ? pct.format(value) : "待复核";
+}
+
 function daysBetween(from, to = new Date()) {
   if (!from) return 0;
   return Math.max(0, Math.floor((to.getTime() - new Date(from).getTime()) / 86400000));
@@ -161,15 +173,18 @@ function marketClasses() {
 }
 
 function enrichMarket(item) {
-  const growthPct = item.startUsd > 0 ? (item.currentUsd - item.startUsd) / item.startUsd : 0;
-  const unrealizedProfitUsd = item.currentUsd - item.costBasisUsd;
-  const targetSellUsd = item.currentUsd * (1 + item.targetReturnPct);
-  const stopLossUsd = item.costBasisUsd * (1 + item.stopLossPct);
+  const hasVerifiedYear = item.priceStatus === "verified" && isNumber(item.startUsd) && item.startUsd > 0 && isNumber(item.currentUsd);
+  const growthPct = hasVerifiedYear ? (item.currentUsd - item.startUsd) / item.startUsd : null;
+  const unrealizedProfitUsd = hasVerifiedYear ? item.currentUsd - item.startUsd : null;
+  const targetSellUsd = isNumber(item.currentUsd) ? item.currentUsd * (1 + item.targetReturnPct) : null;
+  const stopLossBase = isNumber(item.costBasisUsd) ? item.costBasisUsd : item.startUsd;
+  const stopLossUsd = isNumber(stopLossBase) ? stopLossBase * (1 + item.stopLossPct) : null;
   const heatScore = Math.round(
     item.catalystScore * 0.42 +
       item.liquidity * 0.28 +
-      Math.min(growthPct * 100, 160) * 0.22 -
-      item.popRisk * 0.08
+      Math.min((growthPct || 0) * 100, 160) * 0.22 -
+      item.popRisk * 0.08 -
+      (hasVerifiedYear ? 0 : 18)
   );
   const holdLabel =
     item.holdMaxDays <= 100
@@ -179,6 +194,7 @@ function enrichMarket(item) {
         : "中长线";
   return {
     ...item,
+    hasVerifiedYear,
     growthPct,
     unrealizedProfitUsd,
     targetSellUsd,
@@ -193,10 +209,15 @@ function marketRows() {
     .map(enrichMarket)
     .filter((row) => state.marketClass === "全部资产" || row.assetClass === state.marketClass)
     .sort((a, b) => {
-      if (state.marketSortBy === "profit") return b.unrealizedProfitUsd - a.unrealizedProfitUsd;
+      const growthA = isNumber(a.growthPct) ? a.growthPct : -Infinity;
+      const growthB = isNumber(b.growthPct) ? b.growthPct : -Infinity;
+      const profitA = isNumber(a.unrealizedProfitUsd) ? a.unrealizedProfitUsd : -Infinity;
+      const profitB = isNumber(b.unrealizedProfitUsd) ? b.unrealizedProfitUsd : -Infinity;
+      if (state.marketSortBy === "profit") return profitB - profitA;
+      if (state.marketSortBy === "current") return (b.currentUsd || 0) - (a.currentUsd || 0);
       if (state.marketSortBy === "catalyst") return b.heatScore - a.heatScore;
       if (state.marketSortBy === "sellSoon") return a.holdMinDays - b.holdMinDays;
-      return b.growthPct - a.growthPct;
+      return growthB - growthA;
     });
 }
 
@@ -228,19 +249,21 @@ function renderSelect(select, options, value) {
 
 function renderMarketInsights(rows) {
   const all = marketCards.map(enrichMarket);
-  const topGrowth = all.reduce((best, row) => (!best || row.growthPct > best.growthPct ? row : best), null);
-  const topProfit = all.reduce((best, row) => (!best || row.unrealizedProfitUsd > best.unrealizedProfitUsd ? row : best), null);
+  const verifiedRows = all.filter((row) => row.hasVerifiedYear);
+  const topGrowth = verifiedRows.reduce((best, row) => (!best || row.growthPct > best.growthPct ? row : best), null);
+  const topProfit = verifiedRows.reduce((best, row) => (!best || row.unrealizedProfitUsd > best.unrealizedProfitUsd ? row : best), null);
   const topCatalyst = all.reduce((best, row) => (!best || row.heatScore > best.heatScore ? row : best), null);
   document.querySelector("#topGrowthCard").textContent = topGrowth ? topGrowth.cardName : "--";
-  document.querySelector("#topGrowthValue").textContent = topGrowth ? pct.format(topGrowth.growthPct) : "--";
+  document.querySelector("#topGrowthValue").textContent = topGrowth ? pct.format(topGrowth.growthPct) : "等待一年前节点";
   document.querySelector("#topProfitCard").textContent = topProfit ? topProfit.cardName : "--";
   document.querySelector("#topProfitValue").textContent = topProfit
     ? `${usd(topProfit.unrealizedProfitUsd)} / ${yuan.format(topProfit.unrealizedProfitUsd * (marketMeta?.fx?.USD_CNY || 7.2))}`
-    : "--";
+    : "等待一年前节点";
   document.querySelector("#topCatalystCard").textContent = topCatalyst ? topCatalyst.cardName : "--";
   document.querySelector("#topCatalystValue").textContent = topCatalyst ? `${topCatalyst.heatScore} 分` : "--";
+  const pending = all.filter((row) => !row.hasVerifiedYear).length;
   marketDataNote.textContent = marketMeta
-    ? `本机数据 ${new Date(marketMeta.lastUpdatedAt).toLocaleString("zh-CN")} · ${rows.length} 张卡`
+    ? `本机数据 ${new Date(marketMeta.lastUpdatedAt).toLocaleString("zh-CN")} · ${rows.length} 张卡 · ${pending} 张待复核一年前 PSA10 节点`
     : "未加载年度数据";
 }
 
@@ -252,24 +275,28 @@ function renderMarketTable(rows) {
   }
   rows.forEach((row) => {
     const tr = document.createElement("tr");
-    tr.className = row.heatScore >= 90 ? "hot" : "";
+    tr.className = [row.heatScore >= 90 ? "hot" : "", row.hasVerifiedYear ? "" : "pending-row"].filter(Boolean).join(" ");
+    const sourceStatus = row.hasVerifiedYear ? "PSA10节点已核" : "待复核一年节点";
     tr.innerHTML = `
       <td><span class="tag">${row.assetClass}</span></td>
       <td>
         <strong>${row.cardName}</strong>
         <small>${row.nearTermCatalyst}</small>
       </td>
-      <td class="money">${usd(row.startUsd)}</td>
-      <td class="money">${usd(row.currentUsd)}</td>
-      <td class="roi">${pct.format(row.growthPct)}</td>
-      <td class="money emphasis">${usd(row.unrealizedProfitUsd)}</td>
+      <td class="money">${usdOrPending(row.startUsd)}</td>
+      <td class="money">${usdOrPending(row.currentUsd)}</td>
+      <td class="roi">${pctOrPending(row.growthPct)}</td>
+      <td class="money emphasis">${usdOrPending(row.unrealizedProfitUsd)}</td>
       <td>${row.mainstream}<small>流动性 ${row.liquidity}</small></td>
       <td><strong>${row.heatScore} 分</strong><small>供给风险 ${row.popRisk}</small></td>
       <td>${row.holdLabel}<small>${row.holdMinDays}-${row.holdMaxDays} 天</small></td>
-      <td class="money">${usd(row.targetSellUsd)}<small>${yuan.format(row.targetSellUsd * (marketMeta?.fx?.USD_CNY || 7.2))}</small></td>
-      <td class="money">${usd(row.stopLossUsd)}</td>
+      <td class="money">${usdOrPending(row.targetSellUsd)}${isNumber(row.targetSellUsd) ? `<small>${yuan.format(row.targetSellUsd * (marketMeta?.fx?.USD_CNY || 7.2))}</small>` : ""}</td>
+      <td class="money">${usdOrPending(row.stopLossUsd)}</td>
       <td>${row.sellWindow}</td>
-      <td><a class="link-button" href="${row.sourceUrl}" target="_blank" rel="noreferrer">${row.sourceName}</a></td>
+      <td>
+        <a class="link-button" href="${row.sourceUrl}" target="_blank" rel="noreferrer">${row.sourceName}</a>
+        <small class="data-badge">${sourceStatus}</small>
+      </td>
     `;
     marketBody.append(tr);
   });
@@ -304,7 +331,7 @@ function renderActionList() {
       item.innerHTML = `
         <strong>${row.cardName}</strong>
         <span>${row.strategy}</span>
-        <span>建议持有 ${row.holdMinDays}-${row.holdMaxDays} 天；目标 ${usd(row.targetSellUsd)}，止损 ${usd(row.stopLossUsd)}，窗口 ${row.sellWindow}。</span>
+        <span>建议持有 ${row.holdMinDays}-${row.holdMaxDays} 天；目标 ${usdOrPending(row.targetSellUsd)}，止损 ${usdOrPending(row.stopLossUsd)}，窗口 ${row.sellWindow}。</span>
       `;
       actionList.append(item);
     });
