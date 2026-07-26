@@ -22,7 +22,7 @@
       "holdingStartAt": "2026-07-01T00:00:00+08:00",
       "auctionEndAt": "2026-07-27T21:00:00+08:00",
       "status": "样例/待实时",
-      "url": "https://www.cardhobby.com/",
+      "url": "http://www.cardhobby.com.cn/",
       "lastCapturedAt": "2026-07-25T10:00:00+08:00"
     },
     {
@@ -114,8 +114,9 @@
       "holdingStartAt": "2026-07-18T00:00:00+08:00",
       "auctionEndAt": "2026-07-26T22:00:00+08:00",
       "status": "样例/待实时",
-      "url": "https://www.pokercolor.com/",
-      "lastCapturedAt": "2026-07-25T10:00:00+08:00"
+      "url": "https://pokecolor.com/",
+      "lastCapturedAt": "2026-07-25T10:00:00+08:00",
+      "alternateUrl": "https://pokecolor.cn/h5/"
     },
     {
       "id": "pokemon-charizard-151-ebay",
@@ -160,7 +161,7 @@
       "holdingStartAt": "2026-07-22T00:00:00+08:00",
       "auctionEndAt": "2026-07-25T20:00:00+08:00",
       "status": "样例/待实时",
-      "url": "https://www.cardhobby.com/",
+      "url": "http://www.cardhobby.com.cn/",
       "lastCapturedAt": "2026-07-25T10:00:00+08:00"
     },
     {
@@ -252,7 +253,7 @@
       "holdingStartAt": "2026-07-12T00:00:00+08:00",
       "auctionEndAt": "2026-07-26T22:00:00+08:00",
       "status": "样例/待实时",
-      "url": "https://www.cardhobby.com/",
+      "url": "http://www.cardhobby.com.cn/",
       "lastCapturedAt": "2026-07-25T10:00:00+08:00"
     }
   ],
@@ -281,7 +282,8 @@
       "targetBuyCny": 2800,
       "targetSellCny": 3500,
       "trigger": "拍卖价低于2800且剩余时间少于2小时",
-      "searchUrl": "https://www.pokercolor.com/"
+      "searchUrl": "https://pokecolor.com/",
+      "alternateUrl": "https://pokecolor.cn/h5/"
     },
     {
       "type": "热门宝可梦",

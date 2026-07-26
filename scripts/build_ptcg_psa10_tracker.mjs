@@ -103,9 +103,9 @@ const feeHeaders = [
 const feeRows = [
   ["eBay", "https://www.ebay.com", "USD", 7.2, 0.0, 0.13, 0.03, 120, 20, "按账号、品类和跨境方案更新"],
   ["ALT", "https://www.alt.xyz", "USD", 7.2, 0.0, 0.08, 0.03, 120, 20, "请按收藏品/保险/提现规则更新"],
-  ["Card Hobby", "https://www.cardhobby.com", "CNY", 1.0, 0.05, 0.05, 0.01, 20, 15, "请按拍卖佣金、保证金和运费更新"],
+  ["Card Hobby", "http://www.cardhobby.com.cn/", "CNY", 1.0, 0.05, 0.05, 0.01, 20, 15, "请按拍卖佣金、保证金和运费更新"],
   ["Fanatics Collect", "https://www.fanaticscollect.com", "USD", 7.2, 0.0, 0.10, 0.03, 120, 20, "原 PWCC/Fanatics Collect 规则可能变动"],
-  ["PokerColor", "https://www.pokercolor.com", "CNY", 1.0, 0.03, 0.03, 0.01, 15, 15, "请按实际交易规则更新"],
+  ["PokerColor", "https://pokecolor.com/", "CNY", 1.0, 0.03, 0.03, 0.01, 15, 15, "备用 H5 入口：https://pokecolor.cn/h5/"],
 ];
 sheets.fees.getRange("A4:J4").values = [feeHeaders];
 sheets.fees.getRange("A5:J9").values = feeRows;
@@ -141,9 +141,9 @@ styleHeader(sheets.realtime.getRange("A4:K4"), "#334155");
 sheets.realtime.getRange("A5:K9").values = [
   ["eBay", "API", "手动/定时", "环境变量 EBAY_CLIENT_ID / EBAY_CLIENT_SECRET", true, true, "可接入", "https://developer.ebay.com/api-docs/buy/browse/resources/item_summary/methods/search", "scripts/refresh_live_prices.mjs", "Browse API 反映当前挂牌，不等同 sold comps", "可先用最低挂牌做买价，分位数挂牌做卖价参考"],
   ["ALT", "链接监控", "手动", "登录态/API待确认", true, true, "待接入", "https://www.alt.xyz", "待接入", "公开 API 不明确", "先在实时行情维护搜索链接和手动刷新状态"],
-  ["Card Hobby", "链接监控", "手动", "登录态/API待确认", true, true, "待接入", "https://www.cardhobby.com", "待接入", "公开 API 不明确", "拍卖成交/保证金规则需按账号确认"],
+  ["Card Hobby", "链接监控", "手动", "登录态/API待确认", true, true, "待接入", "http://www.cardhobby.com.cn/", "待接入", "公开 API 不明确", "拍卖成交/保证金规则需按账号确认"],
   ["Fanatics Collect", "链接监控", "手动", "登录态/API待确认", true, true, "待接入", "https://www.fanaticscollect.com", "待接入", "公开 API 不明确", "挂牌和成交口径需分开"],
-  ["PokerColor", "链接监控", "手动", "登录态/API待确认", true, true, "待接入", "https://www.pokercolor.com", "待接入", "公开 API 不明确", "先用于链接监控和人工复核"],
+  ["PokerColor", "链接监控", "手动", "登录态/API待确认", true, true, "待接入", "https://pokecolor.com/", "待接入", "公开 API 不明确", "H5 入口：https://pokecolor.cn/h5/"],
 ];
 sheets.realtime.getRange("E5:F9").setNumberFormat("General");
 sheets.realtime.tables.add("A4:K9", true, "RealtimeSettings");
@@ -173,19 +173,19 @@ styleHeader(sheets.live.getRange("A4:M4"), "#0F766E");
 let liveRows = [
   ["P001", "Pikachu Promo PSA10", "eBay", 980, 1280, 980, 12, new Date("2026-07-25"), "样例", "API-ready", "Pikachu Promo PSA 10 SV-P", "https://www.ebay.com/sch/i.html?_nkw=Pikachu+Promo+PSA+10+SV-P", "待接 eBay API 后自动刷新"],
   ["P001", "Pikachu Promo PSA10", "ALT", 1020, 1260, 1020, 4, new Date("2026-07-25"), "样例", "链接监控", "Pikachu Promo PSA 10", "https://www.alt.xyz", "需人工/登录态复核"],
-  ["P001", "Pikachu Promo PSA10", "Card Hobby", 930, 1180, 930, 5, new Date("2026-07-25"), "样例", "链接监控", "Pikachu Promo PSA10", "https://www.cardhobby.com", "需人工/登录态复核"],
+  ["P001", "Pikachu Promo PSA10", "Card Hobby", 930, 1180, 930, 5, new Date("2026-07-25"), "样例", "链接监控", "Pikachu Promo PSA10", "http://www.cardhobby.com.cn/", "需人工/登录态复核"],
   ["P001", "Pikachu Promo PSA10", "Fanatics Collect", 1000, 1300, 1000, 3, new Date("2026-07-25"), "样例", "链接监控", "Pikachu Promo PSA 10", "https://www.fanaticscollect.com", "需人工/登录态复核"],
-  ["P001", "Pikachu Promo PSA10", "PokerColor", 960, 1210, 960, 4, new Date("2026-07-25"), "样例", "链接监控", "Pikachu Promo PSA10", "https://www.pokercolor.com", "需人工/登录态复核"],
+  ["P001", "Pikachu Promo PSA10", "PokerColor", 960, 1210, 960, 4, new Date("2026-07-25"), "样例", "链接监控", "Pikachu Promo PSA10", "https://pokecolor.com/", "H5 入口：https://pokecolor.cn/h5/"],
   ["P002", "Charizard ex SAR PSA10", "eBay", 1800, 2180, 1800, 20, new Date("2026-07-25"), "样例", "API-ready", "Charizard ex SAR PSA 10", "https://www.ebay.com/sch/i.html?_nkw=Charizard+ex+SAR+PSA+10", "待接 eBay API 后自动刷新"],
   ["P002", "Charizard ex SAR PSA10", "ALT", 1760, 2120, 1760, 5, new Date("2026-07-25"), "样例", "链接监控", "Charizard ex SAR PSA 10", "https://www.alt.xyz", "需人工/登录态复核"],
-  ["P002", "Charizard ex SAR PSA10", "Card Hobby", 1700, 2050, 1700, 7, new Date("2026-07-25"), "样例", "链接监控", "Charizard ex SAR PSA10", "https://www.cardhobby.com", "需人工/登录态复核"],
+  ["P002", "Charizard ex SAR PSA10", "Card Hobby", 1700, 2050, 1700, 7, new Date("2026-07-25"), "样例", "链接监控", "Charizard ex SAR PSA10", "http://www.cardhobby.com.cn/", "需人工/登录态复核"],
   ["P002", "Charizard ex SAR PSA10", "Fanatics Collect", 1840, 2200, 1840, 4, new Date("2026-07-25"), "样例", "链接监控", "Charizard ex SAR PSA 10", "https://www.fanaticscollect.com", "需人工/登录态复核"],
-  ["P002", "Charizard ex SAR PSA10", "PokerColor", 1720, 2080, 1720, 6, new Date("2026-07-25"), "样例", "链接监控", "Charizard ex SAR PSA10", "https://www.pokercolor.com", "需人工/登录态复核"],
+  ["P002", "Charizard ex SAR PSA10", "PokerColor", 1720, 2080, 1720, 6, new Date("2026-07-25"), "样例", "链接监控", "Charizard ex SAR PSA10", "https://pokecolor.com/", "H5 入口：https://pokecolor.cn/h5/"],
   ["P003", "Lillie Full Art PSA10", "eBay", 0, 0, 0, 0, new Date("2026-07-25"), "无数据", "API-ready", "Lillie Full Art PSA 10", "https://www.ebay.com/sch/i.html?_nkw=Lillie+Full+Art+PSA+10", "待接 eBay API 后自动刷新"],
   ["P003", "Lillie Full Art PSA10", "ALT", 0, 7600, 0, 2, new Date("2026-07-25"), "样例", "链接监控", "Lillie Full Art PSA 10", "https://www.alt.xyz", "需人工/登录态复核"],
-  ["P003", "Lillie Full Art PSA10", "Card Hobby", 6800, 7200, 6800, 3, new Date("2026-07-25"), "样例", "链接监控", "Lillie PSA10", "https://www.cardhobby.com", "需人工/登录态复核"],
+  ["P003", "Lillie Full Art PSA10", "Card Hobby", 6800, 7200, 6800, 3, new Date("2026-07-25"), "样例", "链接监控", "Lillie PSA10", "http://www.cardhobby.com.cn/", "需人工/登录态复核"],
   ["P003", "Lillie Full Art PSA10", "Fanatics Collect", 0, 0, 0, 0, new Date("2026-07-25"), "无数据", "链接监控", "Lillie Full Art PSA 10", "https://www.fanaticscollect.com", "需人工/登录态复核"],
-  ["P003", "Lillie Full Art PSA10", "PokerColor", 6500, 7350, 6500, 2, new Date("2026-07-25"), "样例", "链接监控", "Lillie PSA10", "https://www.pokercolor.com", "需人工/登录态复核"],
+  ["P003", "Lillie Full Art PSA10", "PokerColor", 6500, 7350, 6500, 2, new Date("2026-07-25"), "样例", "链接监控", "Lillie PSA10", "https://pokecolor.com/", "H5 入口：https://pokecolor.cn/h5/"],
 ];
 try {
   const liveJsonPath = "/Users/be/Documents/宝可梦拍卖/data/live_market_quotes.json";

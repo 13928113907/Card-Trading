@@ -397,6 +397,7 @@ function renderOpportunities() {
       <div class="opportunity-actions">
         <span>${row.sourcePriceText || ""} ${row.sourceEndText || ""}</span>
         <a class="link-button" href="${row.url}" target="_blank" rel="noreferrer">打开</a>
+        ${row.alternateUrl ? `<a class="capture-link" href="${row.alternateUrl}" target="_blank" rel="noreferrer">H5</a>` : ""}
         ${row.screenshot ? `<a class="capture-link" href="${row.screenshot}" target="_blank" rel="noreferrer">截图</a>` : ""}
       </div>
     `;
@@ -440,6 +441,7 @@ function renderTable(rows) {
       <td><span class="status">${row.status}</span><small>${row.lastCapturedAt ? dateTime.format(new Date(row.lastCapturedAt)) : ""}</small></td>
       <td>
         <a class="link-button" href="${row.url}" target="_blank" rel="noreferrer">打开</a>
+        ${row.alternateUrl ? `<a class="capture-link" href="${row.alternateUrl}" target="_blank" rel="noreferrer">H5</a>` : ""}
         ${row.screenshot ? `<a class="capture-link" href="${row.screenshot}" target="_blank" rel="noreferrer">截图</a>` : ""}
       </td>
     `;

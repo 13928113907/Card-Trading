@@ -431,9 +431,9 @@ function linkedMonitorRows(target) {
     const defaults = platformDefaults[platform];
     const searchBase = {
       ALT: "https://www.alt.xyz/",
-      "Card Hobby": "https://www.cardhobby.com/",
+      "Card Hobby": "http://www.cardhobby.com.cn/",
       "Fanatics Collect": "https://www.fanaticscollect.com/",
-      PokerColor: "https://www.pokercolor.com/",
+      PokerColor: "https://pokecolor.com/",
     }[platform];
     return {
       ...target,
@@ -451,6 +451,7 @@ function linkedMonitorRows(target) {
       auctionEndAt: futureEnd(96),
       status: "待登录/待解析",
       url: searchBase,
+      alternateUrl: platform === "PokerColor" ? "https://pokecolor.cn/h5/" : undefined,
       lastCapturedAt: new Date().toISOString(),
     };
   });
