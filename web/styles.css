@@ -434,6 +434,72 @@ tr.pending-row {
   gap: 8px;
 }
 
+.opportunity-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 10px;
+}
+
+.opportunity-card {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid #d9e8e3;
+  border-radius: 8px;
+  background: #fbfffd;
+}
+
+.muted-card {
+  color: var(--muted);
+}
+
+.opportunity-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.opportunity-card p {
+  margin: 0;
+  min-height: 38px;
+  color: #31475a;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.opportunity-card dl {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin: 0;
+}
+
+.opportunity-card dt {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.opportunity-card dd {
+  margin: 2px 0 0;
+  font-weight: 900;
+}
+
+.opportunity-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.opportunity-actions span {
+  flex: 1;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .rank-item {
   padding: 11px;
   border: 1px solid #e6edf4;

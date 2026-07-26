@@ -5,6 +5,7 @@ const AUTO_REFRESH_MS = 5 * 60 * 1000;
 
 let auctions = [];
 let watchlist = [];
+let opportunities = [];
 let marketCards = [];
 let marketEvents = [];
 let marketMeta = null;
@@ -51,6 +52,7 @@ const marketBody = document.querySelector("#marketBody");
 const categoryRank = document.querySelector("#categoryRank");
 const eventList = document.querySelector("#eventList");
 const actionList = document.querySelector("#actionList");
+const opportunityGrid = document.querySelector("#opportunityGrid");
 const watchlistGrid = document.querySelector("#watchlistGrid");
 const refreshStatus = document.querySelector("#refreshStatus");
 const refreshButton = document.querySelector("#refreshButton");
@@ -345,7 +347,7 @@ function renderActionList() {
 }
 
 function renderMetrics(rows) {
-  const positive = rows.filter((row) => row.actualProfit > 0);
+  const positive = rows.filter((row) => row.roi >= 0.2);
   const nearest = rows.reduce((best, row) => {
     if (!best) return row;
     return new Date(row.auctionEndAt) < new Date(best.auctionEndAt) ? row : best;
@@ -359,6 +361,47 @@ function renderMetrics(rows) {
   document.querySelector("#metricProfit").textContent = rows.length ? yuan.format(Math.max(...rows.map((row) => row.actualProfit))) : "¥0";
   document.querySelector("#metricEnding").textContent = nearest ? remainingText(nearest.auctionEndAt) : "--";
   document.querySelector("#metricFeeRate").textContent = pct.format(avgFeeRate);
+}
+
+function renderOpportunities() {
+  opportunityGrid.innerHTML = "";
+  const rows = (opportunities.length ? opportunities : allRows().filter((row) => row.roi >= 0.2))
+    .map((row) => (row.roi === undefined ? enrich(row) : row))
+    .sort((a, b) => (b.actualProfitCny ?? b.actualProfit) - (a.actualProfitCny ?? a.actualProfit));
+
+  if (!rows.length) {
+    opportunityGrid.innerHTML = `<article class="opportunity-card muted-card">当前抓取没有 ROI 大于 20% 的竞拍。</article>`;
+    return;
+  }
+
+  rows.forEach((row) => {
+    const profit = row.actualProfitCny ?? row.actualProfit;
+    const totalCost = row.totalCostCny ?? row.totalCost;
+    const fees = row.feesCny ?? row.fees?.total ?? 0;
+    const card = document.createElement("article");
+    card.className = "opportunity-card";
+    card.innerHTML = `
+      <div class="opportunity-head">
+        <span class="tag">${row.category}</span>
+        <strong>${row.cnName}</strong>
+      </div>
+      <p>${row.sourceTitle || row.cardName}</p>
+      <dl>
+        <div><dt>当前竞价</dt><dd>${yuan.format(row.currentBidCny)}</dd></div>
+        <div><dt>预估卖出</dt><dd>${yuan.format(row.expectedSaleCny)}</dd></div>
+        <div><dt>总成本</dt><dd>${yuan.format(totalCost)}</dd></div>
+        <div><dt>费用</dt><dd>${yuan.format(fees)}</dd></div>
+        <div><dt>实际利润</dt><dd>${yuan.format(profit)}</dd></div>
+        <div><dt>ROI</dt><dd>${pct.format(row.roi)}</dd></div>
+      </dl>
+      <div class="opportunity-actions">
+        <span>${row.sourcePriceText || ""} ${row.sourceEndText || ""}</span>
+        <a class="link-button" href="${row.url}" target="_blank" rel="noreferrer">打开</a>
+        ${row.screenshot ? `<a class="capture-link" href="${row.screenshot}" target="_blank" rel="noreferrer">截图</a>` : ""}
+      </div>
+    `;
+    opportunityGrid.append(card);
+  });
 }
 
 function rowClass(row) {
@@ -465,6 +508,7 @@ function render() {
   renderMarketTable(strategyRows);
   renderEvents();
   renderActionList();
+  renderOpportunities();
   renderTable(rows);
   renderRanks(rows);
   renderWatchlist();
@@ -477,6 +521,7 @@ async function loadData() {
     if (!response.ok) throw new Error("live endpoint unavailable");
     const payload = await response.json();
     auctions = payload.auctions || [];
+    opportunities = payload.opportunities || [];
     watchlist = payload.watchlist || [];
     lastUpdatedAt = payload.lastUpdatedAt || new Date().toISOString();
     dataMode = "live";
@@ -484,6 +529,7 @@ async function loadData() {
     const response = await fetch(`${FALLBACK_URL}?t=${Date.now()}`, { cache: "no-store" });
     const payload = await response.json();
     auctions = payload.auctions || [];
+    opportunities = payload.opportunities || [];
     watchlist = payload.watchlist || [];
     lastUpdatedAt = payload.lastUpdatedAt || new Date().toISOString();
     dataMode = "local";

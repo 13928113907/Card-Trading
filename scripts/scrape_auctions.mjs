@@ -4,12 +4,15 @@ import { chromium } from "playwright";
 
 const root = "/Users/be/Documents/宝可梦拍卖";
 const samplePath = path.join(root, "web/data/auctions.example.json");
+const marketPath = path.join(root, "web/data/market-year.json");
 const outputPath = path.join(root, "web/data/auctions.live.json");
 const captureDir = path.join(root, "web/captures");
 const usdCny = Number(process.env.USD_CNY || 7.2);
 const twdCny = Number(process.env.TWD_CNY || 0.22);
-const maxPerQuery = Number(process.env.MAX_PER_QUERY || 3);
+const jpyCny = Number(process.env.JPY_CNY || 0.049);
+const maxPerQuery = Number(process.env.MAX_PER_QUERY || 8);
 const minPsa10PriceCny = Number(process.env.MIN_PSA10_PRICE_CNY || 500);
+const minOpportunityRoi = Number(process.env.MIN_OPPORTUNITY_ROI || 0.2);
 
 const platformDefaults = {
   eBay: { feeRate: 0.13, paymentFeeRate: 0.03, shippingCny: 140 },
@@ -19,35 +22,140 @@ const platformDefaults = {
   PokerColor: { feeRate: 0.03, paymentFeeRate: 0.01, shippingCny: 25 },
 };
 
-const requiredTerms = {
-  莉莉艾: ["lillie"],
-  玛俐: ["marnie"],
-  莎莉娜: ["serena"],
-  竹兰: ["cynthia"],
-  奇树: ["iono"],
-  喷火龙: ["charizard"],
-  皮卡丘: ["pikachu"],
-  裂空坐: ["rayquaza"],
-  月亮伊布: ["umbreon"],
-  耿鬼: ["gengar"],
-  超梦: ["mewtwo"],
-  梦幻: ["mew"],
+const targetOverrides = {
+  "ptcg-mew-gold-star-101": {
+    type: "热门宝可梦",
+    category: "梦幻",
+    cnName: "梦幻 Gold Star #101 PSA10",
+    set: "Dragon Frontiers / 101/101",
+    language: "英文",
+    query: "Mew Gold Star 101/101 PSA 10 Dragon Frontiers",
+    include: ["mew", "gold", "star"],
+    anyNumber: ["101/101", "#101", " 101 "],
+    exclude: ["mewtwo", "mew ex", "black star promo", "celebrations", "metal"],
+  },
+  "ptcg-umbreon-vmax-215": {
+    type: "热门宝可梦",
+    category: "月亮伊布",
+    cnName: "月亮伊布 VMAX #215 异画 PSA10",
+    set: "Evolving Skies / 215/203",
+    language: "英文",
+    query: "Umbreon VMAX 215/203 PSA 10 Evolving Skies",
+    include: ["umbreon", "vmax"],
+    anyNumber: ["215/203", "#215", " 215 "],
+    exclude: ["v ", "vstar", "japanese", "korean", "chinese"],
+  },
+  "ptcg-gengar-vmax-271": {
+    type: "热门宝可梦",
+    category: "耿鬼",
+    cnName: "耿鬼 VMAX #271 异画 PSA10",
+    set: "Fusion Strike / 271/264",
+    language: "英文",
+    query: "Gengar VMAX 271/264 PSA 10 Fusion Strike",
+    include: ["gengar", "vmax"],
+    anyNumber: ["271/264", "#271", " 271 "],
+    exclude: ["japanese", "korean", "chinese"],
+  },
+  "ptcg-rayquaza-vmax-218": {
+    type: "热门宝可梦",
+    category: "裂空坐",
+    cnName: "裂空坐 VMAX #218 异画 PSA10",
+    set: "Evolving Skies / 218/203",
+    language: "英文",
+    query: "Rayquaza VMAX 218/203 PSA 10 Evolving Skies",
+    include: ["rayquaza", "vmax"],
+    anyNumber: ["218/203", "#218", " 218 "],
+    exclude: ["japanese", "korean", "chinese"],
+  },
+  "ptcg-pikachu-grey-felt-hat": {
+    type: "热门宝可梦",
+    category: "皮卡丘",
+    cnName: "Pikachu with Grey Felt Hat #85 PSA10",
+    set: "Pokemon Promo / 85",
+    language: "英文",
+    query: "Pikachu Grey Felt Hat 85 PSA 10 Van Gogh",
+    include: ["pikachu", "grey", "felt", "hat"],
+    anyNumber: ["#85", " 85 "],
+    exclude: ["raw", "ungraded", "sealed", "poster"],
+  },
+  "ptcg-charizard-151-sar": {
+    type: "热门宝可梦",
+    category: "喷火龙",
+    cnName: "喷火龙 ex SAR #201 日文 PSA10",
+    set: "Japanese Scarlet & Violet 151 / 201/165",
+    language: "日文",
+    query: "Charizard ex 201/165 SAR PSA 10 Japanese 151",
+    include: ["charizard", "ex"],
+    anyNumber: ["201/165", "#201", " 201 "],
+    exclude: ["english", "korean", "chinese", "promo"],
+  },
+  "ptcg-mew-ex-205-jp": {
+    type: "热门宝可梦",
+    category: "梦幻",
+    cnName: "梦幻 ex SAR #205 日文 PSA10",
+    set: "Japanese Scarlet & Violet 151 / 205/165",
+    language: "日文",
+    query: "Mew ex 205/165 SAR PSA 10 Japanese 151",
+    include: ["mew", "ex"],
+    anyNumber: ["205/165", "#205", " 205 "],
+    exclude: ["mewtwo", "english", "korean", "chinese", "promo", "ultra-premium", "ultra premium", "metal", "en "],
+  },
+  "ptcg-leafeon-vmax-205": {
+    type: "热门宝可梦",
+    category: "叶伊布",
+    cnName: "叶伊布 VMAX #205 异画 PSA10",
+    set: "Evolving Skies / 205/203",
+    language: "英文",
+    query: "Leafeon VMAX 205/203 PSA 10 Evolving Skies",
+    include: ["leafeon", "vmax"],
+    anyNumber: ["205/203", "#205", " 205 "],
+    exclude: ["japanese", "korean", "chinese"],
+  },
+  "ptcg-glaceon-vmax-209": {
+    type: "热门宝可梦",
+    category: "冰伊布",
+    cnName: "冰伊布 VMAX #209 异画 PSA10",
+    set: "Evolving Skies / 209/203",
+    language: "英文",
+    query: "Glaceon VMAX 209/203 PSA 10 Evolving Skies",
+    include: ["glaceon", "vmax"],
+    anyNumber: ["209/203", "#209", " 209 "],
+    exclude: ["japanese", "korean", "chinese"],
+  },
+  "ptcg-sylveon-vmax-212": {
+    type: "热门宝可梦",
+    category: "仙子伊布",
+    cnName: "仙子伊布 VMAX #212 异画 PSA10",
+    set: "Evolving Skies / 212/203",
+    language: "英文",
+    query: "Sylveon VMAX 212/203 PSA 10 Evolving Skies",
+    include: ["sylveon", "vmax"],
+    anyNumber: ["212/203", "#212", " 212 "],
+    exclude: ["japanese", "korean", "chinese"],
+  },
+  "ptcg-mewtwo-gx-76": {
+    type: "热门宝可梦",
+    category: "超梦",
+    cnName: "超梦 GX Secret #76 PSA10",
+    set: "Shining Legends / 76/73",
+    language: "英文",
+    query: "Mewtwo GX 76/73 Secret Rare PSA 10 Shining Legends",
+    include: ["mewtwo", "gx"],
+    anyNumber: ["76/73", "#76", " 76 "],
+    exclude: ["mew & mewtwo", "tag team", "japanese", "korean", "chinese"],
+  },
+  "ptcg-espeon-vmax-270": {
+    type: "热门宝可梦",
+    category: "太阳伊布",
+    cnName: "太阳伊布 VMAX #270 异画 PSA10",
+    set: "Fusion Strike / 270/264",
+    language: "英文",
+    query: "Espeon VMAX 270/264 PSA 10 Fusion Strike",
+    include: ["espeon", "vmax"],
+    anyNumber: ["270/264", "#270", " 270 "],
+    exclude: ["japanese", "korean", "chinese"],
+  },
 };
-
-const targets = [
-  { type: "人气训练家", category: "莉莉艾", cnName: "莉莉艾 全图 PSA10", cardName: "Lillie Full Art PSA 10", set: "SM4+ / 119/114", language: "日文", query: "Lillie Full Art PSA 10" },
-  { type: "人气训练家", category: "玛俐", cnName: "玛俐 全图 PSA10", cardName: "Marnie Full Art PSA 10", set: "Sword & Shield / 200/202", language: "英文", query: "Marnie Full Art PSA 10" },
-  { type: "人气训练家", category: "莎莉娜", cnName: "莎莉娜 SR PSA10", cardName: "Serena SR PSA 10", set: "Incandescent Arcana / 081/068", language: "日文", query: "Serena SR PSA 10" },
-  { type: "人气训练家", category: "竹兰", cnName: "竹兰 全图 PSA10", cardName: "Cynthia Full Art PSA 10", set: "Ultra Prism / 148/156", language: "英文", query: "Cynthia Full Art PSA 10" },
-  { type: "人气训练家", category: "奇树", cnName: "奇树 SAR PSA10", cardName: "Iono SAR PSA 10", set: "Clay Burst / 096/071", language: "日文", query: "Iono SAR PSA 10" },
-  { type: "热门宝可梦", category: "喷火龙", cnName: "喷火龙 ex SAR PSA10", cardName: "Charizard ex SAR PSA 10", set: "Pokemon Card 151 / 201/165", language: "日文", query: "Charizard ex SAR PSA 10 201/165" },
-  { type: "热门宝可梦", category: "皮卡丘", cnName: "皮卡丘 Promo PSA10", cardName: "Pikachu Promo PSA 10", set: "SV-P / Promo", language: "日文", query: "Pikachu Promo PSA 10" },
-  { type: "热门宝可梦", category: "裂空坐", cnName: "裂空坐 VMAX 异画 PSA10", cardName: "Rayquaza VMAX Alternate Art PSA 10", set: "Evolving Skies / 218/203", language: "英文", query: "Rayquaza VMAX 218/203 PSA 10" },
-  { type: "热门宝可梦", category: "月亮伊布", cnName: "月亮伊布 VMAX 异画 PSA10", cardName: "Umbreon VMAX Alternate Art PSA 10", set: "Evolving Skies / 215/203", language: "英文", query: "Umbreon VMAX 215/203 PSA 10" },
-  { type: "热门宝可梦", category: "耿鬼", cnName: "耿鬼 VMAX 异画 PSA10", cardName: "Gengar VMAX Alternate Art PSA 10", set: "Fusion Strike / 271/264", language: "英文", query: "Gengar VMAX 271/264 PSA 10" },
-  { type: "热门宝可梦", category: "超梦", cnName: "超梦 GX Secret PSA10", cardName: "Mewtwo GX Secret PSA 10", set: "SM / Secret", language: "日文", query: "Mewtwo GX Secret PSA 10" },
-  { type: "热门宝可梦", category: "梦幻", cnName: "梦幻 Gold Star PSA10", cardName: "Mew Gold Star PSA 10", set: "PLAY Promo", language: "日文", query: "Mew Gold Star PSA 10" },
-];
 
 function slug(text) {
   return text.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 80);
@@ -61,19 +169,19 @@ function ebaySearchUrl(query) {
   return url.toString();
 }
 
-function guessExpectedSale(currentBidCny, platform) {
-  const multiplier = platform === "eBay" ? 1.18 : 1.14;
-  return Math.round(currentBidCny * multiplier);
+function expectedSaleCny(target) {
+  return Math.round(target.currentUsd * usdCny * 0.92);
 }
 
 function parsePriceToCny(text) {
   if (!text) return 0;
   const cleaned = text.replace(/,/g, "");
-  const match = cleaned.match(/(?:US\s*)?\$([\d.]+)|¥\s*([\d.]+)|CNY\s*([\d.]+)|NT\$?\s*([\d.]+)|NTS\s*([\d.]+)/i);
+  const match = cleaned.match(/(?:US\s*)?\$([\d.]+)|(?:JPY|JP¥)\s*([\d.]+)|¥\s*([\d.]+)|CNY\s*([\d.]+)|NT\$?\s*([\d.]+)|NTS\s*([\d.]+)/i);
   if (!match) return 0;
   if (match[1]) return Math.round(Number(match[1]) * usdCny);
-  if (match[4] || match[5]) return Math.round(Number(match[4] || match[5] || 0) * twdCny);
-  return Math.round(Number(match[2] || match[3] || 0));
+  if (match[2]) return Math.round(Number(match[2]) * jpyCny);
+  if (match[5] || match[6]) return Math.round(Number(match[5] || match[6] || 0) * twdCny);
+  return Math.round(Number(match[3] || match[4] || 0));
 }
 
 function futureEnd(hoursFromNow = 72) {
@@ -82,8 +190,32 @@ function futureEnd(hoursFromNow = 72) {
 
 function titleMatchesTarget(title, target) {
   const lower = title.toLowerCase();
-  const terms = requiredTerms[target.category] || [];
-  return /psa\s*10/i.test(title) && terms.every((term) => lower.includes(term));
+  if (lower.length < 32) return false;
+  if (!/psa\s*(?:gem mint\s*)?10|psa10/i.test(title)) return false;
+  if (/\b(?:cgc|bgs|sgc|ace|raw|ungraded|reprint|proxy|custom|digital)\b/i.test(title)) return false;
+  if (target.exclude?.some((term) => lower.includes(term.toLowerCase()))) return false;
+  if (!target.include?.every((term) => lower.includes(term.toLowerCase()))) return false;
+  if (!target.anyNumber?.length) return true;
+  return target.anyNumber.some((term) => lower.includes(term.toLowerCase()));
+}
+
+function enrichFinancials(item) {
+  const fees =
+    item.currentBidCny * item.feeRate +
+    item.currentBidCny * item.paymentFeeRate +
+    item.shippingCny +
+    item.taxCny +
+    item.otherCostCny;
+  const totalCostCny = item.currentBidCny + fees;
+  const actualProfitCny = item.expectedSaleCny - totalCostCny;
+  const roi = totalCostCny > 0 ? actualProfitCny / totalCostCny : 0;
+  return {
+    ...item,
+    feesCny: Math.round(fees),
+    totalCostCny: Math.round(totalCostCny),
+    actualProfitCny: Math.round(actualProfitCny),
+    roi,
+  };
 }
 
 async function launchBrowser() {
@@ -116,7 +248,7 @@ async function scrapeEbay(page, target) {
       const nearby = lines.slice(Math.max(0, i - 2), Math.min(lines.length, i + 4)).join(" ");
       const priceCny = parsePriceToCny(lines[i]);
       if (
-        /^(?:NT\$|NTS|US\s*\$|\$|¥|CNY)/i.test(lines[i]) &&
+        /^(?:NT\$|NTS|US\s*\$|\$|JPY|JP¥|¥|CNY)/i.test(lines[i]) &&
         priceCny >= minPsa10PriceCny &&
         !/delivery|shipping|estimated|postage|运费|配送/i.test(nearby)
       ) {
@@ -138,12 +270,12 @@ async function scrapeEbay(page, target) {
       const currentBidCny = parsePriceToCny(row.price);
       const defaults = platformDefaults.eBay;
       return {
-        id: `${slug(target.category)}-${slug(target.query)}-ebay-${index + 1}`,
         ...target,
+        id: `${target.id}-ebay-${index + 1}`,
         psaCert: "PSA 10",
         platform: "eBay",
         currentBidCny,
-        expectedSaleCny: guessExpectedSale(currentBidCny, "eBay"),
+        expectedSaleCny: expectedSaleCny(target),
         feeRate: defaults.feeRate,
         paymentFeeRate: defaults.paymentFeeRate,
         shippingCny: defaults.shippingCny,
@@ -172,8 +304,8 @@ function linkedMonitorRows(target) {
       PokerColor: "https://www.pokercolor.com/",
     }[platform];
     return {
-      id: `${slug(target.category)}-${slug(target.query)}-${slug(platform)}`,
       ...target,
+      id: `${target.id}-${slug(platform)}`,
       psaCert: "PSA 10",
       platform,
       currentBidCny: 0,
@@ -195,6 +327,18 @@ function linkedMonitorRows(target) {
 async function main() {
   await fs.mkdir(captureDir, { recursive: true });
   const sample = JSON.parse(await fs.readFile(samplePath, "utf8"));
+  const market = JSON.parse(await fs.readFile(marketPath, "utf8"));
+  const targets = market.cards
+    .filter((card) => targetOverrides[card.id] && card.currentUsd > 0)
+    .map((card) => ({
+      ...targetOverrides[card.id],
+      id: card.id,
+      cardName: card.cardName,
+      currentUsd: card.currentUsd,
+      sourceName: card.sourceName,
+      sourceUrl: card.sourceUrl,
+      priceConfidence: card.confidence,
+    }));
   const auctions = [];
   const browser = await launchBrowser();
   const page = await browser.newPage({ viewport: { width: 1440, height: 1100 } });
@@ -227,10 +371,17 @@ async function main() {
   }
   await browser.close();
 
+  const enrichedAuctions = auctions.map(enrichFinancials);
+  const opportunities = enrichedAuctions
+    .filter((row) => row.currentBidCny > 0 && row.roi >= minOpportunityRoi)
+    .sort((a, b) => b.actualProfitCny - a.actualProfitCny);
+
   const payload = {
     lastUpdatedAt: new Date().toISOString(),
     source: "local-browser-monitor",
-    auctions: auctions.length ? auctions : sample.auctions,
+    minOpportunityRoi,
+    auctions: enrichedAuctions.length ? enrichedAuctions : sample.auctions,
+    opportunities,
     watchlist: sample.watchlist,
   };
   await fs.writeFile(outputPath, JSON.stringify(payload, null, 2));
