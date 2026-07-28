@@ -517,6 +517,13 @@ function render() {
   renderStatus();
 }
 
+function loadErrorMessage(error) {
+  if (window.location.protocol === "file:") {
+    return "读取失败：请通过 GitHub Pages 网站地址或本地 HTTP 服务打开，file:// 无法读取数据文件";
+  }
+  return `读取失败：${error?.message || "无法下载数据文件"}`;
+}
+
 async function loadData() {
   try {
     const response = await fetch(`${LIVE_URL}?t=${Date.now()}`, { cache: "no-store" });
@@ -552,10 +559,13 @@ async function loadData() {
 async function triggerRefresh() {
   refreshButton.disabled = true;
   refreshButton.textContent = "读取中";
+  refreshStatus.textContent = "正在重新读取已发布的数据文件...";
   try {
     await loadData();
-  } catch {
-    await loadData();
+    const sourceTime = lastUpdatedAt ? dateTime.format(new Date(lastUpdatedAt)) : "--";
+    refreshStatus.textContent = `读取成功 ${dateTime.format(new Date())} · 数据文件更新 ${sourceTime}`;
+  } catch (error) {
+    refreshStatus.textContent = loadErrorMessage(error);
   } finally {
     refreshButton.disabled = false;
     refreshButton.textContent = "重新读取";
@@ -617,5 +627,11 @@ marketSortBy.addEventListener("change", (event) => {
 refreshButton.addEventListener("click", triggerRefresh);
 exportWatchlist.addEventListener("click", exportWatchlistCsv);
 
-loadData();
-window.setInterval(loadData, AUTO_REFRESH_MS);
+loadData().catch((error) => {
+  refreshStatus.textContent = loadErrorMessage(error);
+});
+window.setInterval(() => {
+  loadData().catch((error) => {
+    refreshStatus.textContent = loadErrorMessage(error);
+  });
+}, AUTO_REFRESH_MS);
