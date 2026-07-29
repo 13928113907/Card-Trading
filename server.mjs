@@ -7,11 +7,22 @@ import { fileURLToPath } from "node:url";
 const root = path.dirname(fileURLToPath(import.meta.url));
 const webRoot = path.join(root, "web");
 const dataRoot = path.join(webRoot, "data");
-const livePath = path.join(dataRoot, "auctions.live.json");
+const runtimeDataRoot = path.resolve(process.env.DATA_DIR || dataRoot);
+const runtimeCaptureRoot = path.resolve(process.env.CAPTURE_DIR || path.join(webRoot, "captures"));
+const livePath = path.join(runtimeDataRoot, "auctions.live.json");
 const samplePath = path.join(dataRoot, "auctions.example.json");
 const port = Number(process.env.PORT || 4173);
-const host = process.env.HOST || "127.0.0.1";
+const host = process.env.HOST || "0.0.0.0";
 const nodeBin = process.execPath;
+const refreshMs = Number(process.env.REFRESH_MS || 300000);
+const refreshTimeoutMs = Number(process.env.REFRESH_TIMEOUT_MS || 240000);
+const manualRefreshCooldownMs = Number(process.env.MANUAL_REFRESH_COOLDOWN_MS || 60000);
+const allowedOrigins = new Set(
+  String(process.env.ALLOWED_ORIGINS || "https://13928113907.github.io,http://localhost:4173,http://127.0.0.1:4173")
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean)
+);
 
 const mime = new Map([
   [".html", "text/html; charset=utf-8"],
@@ -27,6 +38,12 @@ const mime = new Map([
 
 let refreshing = false;
 let lastRefreshError = "";
+let refreshStartedAt = null;
+let refreshCompletedAt = null;
+let refreshReason = null;
+let refreshRunId = 0;
+let refreshResult = null;
+let refreshProcess = null;
 
 async function readJsonWithFallback() {
   try {
@@ -38,56 +55,138 @@ async function readJsonWithFallback() {
   }
 }
 
-function sendJson(res, status, body) {
-  res.writeHead(status, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
+function corsHeaders(req) {
+  const origin = req.headers.origin;
+  if (!origin || !allowedOrigins.has(origin)) return {};
+  return {
+    "access-control-allow-origin": origin,
+    "access-control-allow-methods": "GET, POST, OPTIONS",
+    "access-control-allow-headers": "content-type",
+    vary: "Origin",
+  };
+}
+
+function sendJson(req, res, status, body) {
+  res.writeHead(status, {
+    "content-type": "application/json; charset=utf-8",
+    "cache-control": "no-store",
+    ...corsHeaders(req),
+  });
   res.end(JSON.stringify(body));
 }
 
-function runRefresh() {
-  if (refreshing) return Promise.resolve({ ok: false, message: "refresh already running" });
+function refreshStatus() {
+  return {
+    refreshing,
+    refreshRunId,
+    refreshReason,
+    refreshResult,
+    lastRefreshError,
+    refreshStartedAt,
+    refreshCompletedAt,
+    refreshIntervalSeconds: Math.round(refreshMs / 1000),
+  };
+}
+
+function runRefresh(reason = "scheduled") {
+  if (refreshing) return { accepted: true, alreadyRunning: true, ...refreshStatus() };
   refreshing = true;
   lastRefreshError = "";
-  return new Promise((resolve) => {
+  refreshStartedAt = new Date().toISOString();
+  refreshCompletedAt = null;
+  refreshReason = reason;
+  refreshResult = null;
+  refreshRunId += 1;
+  const currentRunId = refreshRunId;
+
+  refreshProcess = new Promise((resolve) => {
     const child = spawn(nodeBin, [path.join(root, "scripts", "scrape_auctions.mjs")], {
       cwd: root,
-      env: process.env,
+      env: {
+        ...process.env,
+        LIVE_OUTPUT_PATH: livePath,
+        CAPTURE_DIR: process.env.CAPTURE_DIR || path.join(root, "web", "captures"),
+      },
       stdio: ["ignore", "pipe", "pipe"],
     });
+    let stdout = "";
     let stderr = "";
+    const timeout = setTimeout(() => child.kill("SIGTERM"), refreshTimeoutMs);
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk.toString();
+    });
     child.stderr.on("data", (chunk) => {
       stderr += chunk.toString();
     });
     child.on("close", (code) => {
+      clearTimeout(timeout);
       refreshing = false;
+      refreshCompletedAt = new Date().toISOString();
       if (code === 0) {
-        resolve({ ok: true, message: "refresh complete" });
+        refreshResult = {
+          ok: true,
+          message: "refresh complete",
+          output: stdout.trim().split("\n").at(-1) || "",
+        };
       } else {
-        lastRefreshError = stderr.trim() || `refresh exited with ${code}`;
-        resolve({ ok: false, message: lastRefreshError });
+        lastRefreshError =
+          stderr.trim() ||
+          (code === null ? `refresh exceeded ${Math.round(refreshTimeoutMs / 1000)} seconds` : `refresh exited with ${code}`);
+        refreshResult = { ok: false, message: lastRefreshError };
       }
+      resolve(refreshResult);
     });
   });
+  refreshProcess.finally(() => {
+    refreshProcess = null;
+  });
+
+  return { accepted: true, alreadyRunning: false, currentRunId, ...refreshStatus() };
 }
 
 const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url, `http://${req.headers.host}`);
+    if (req.method === "OPTIONS") {
+      res.writeHead(204, corsHeaders(req));
+      res.end();
+      return;
+    }
     if (url.pathname === "/api/auctions") {
-      sendJson(res, 200, await readJsonWithFallback());
+      sendJson(req, res, 200, await readJsonWithFallback());
       return;
     }
     if (url.pathname === "/api/refresh" && req.method === "POST") {
-      sendJson(res, 200, await runRefresh());
+      const lastStartedMs = refreshStartedAt ? new Date(refreshStartedAt).getTime() : 0;
+      const cooldownRemainingMs = Math.max(0, manualRefreshCooldownMs - (Date.now() - lastStartedMs));
+      if (!refreshing && cooldownRemainingMs > 0) {
+        sendJson(req, res, 429, {
+          ok: false,
+          message: `请在 ${Math.ceil(cooldownRemainingMs / 1000)} 秒后再刷新`,
+          cooldownRemainingMs,
+          ...refreshStatus(),
+        });
+        return;
+      }
+      const result = runRefresh("manual");
+      sendJson(req, res, 202, { ok: true, ...result });
       return;
     }
     if (url.pathname === "/api/status") {
-      sendJson(res, 200, { refreshing, lastRefreshError });
+      sendJson(req, res, 200, refreshStatus());
+      return;
+    }
+    if (url.pathname === "/healthz") {
+      sendJson(req, res, 200, { ok: true });
       return;
     }
 
     const requested = url.pathname === "/" ? "/index.html" : decodeURIComponent(url.pathname);
-    const filePath = path.normalize(path.join(webRoot, requested));
-    if (!filePath.startsWith(webRoot)) {
+    const isRuntimeCapture = requested.startsWith("/captures/");
+    const staticRoot = isRuntimeCapture ? runtimeCaptureRoot : webRoot;
+    const relativePath = isRuntimeCapture ? requested.slice("/captures/".length) : requested;
+    const filePath = path.normalize(path.join(staticRoot, relativePath));
+    if (!filePath.startsWith(staticRoot)) {
       res.writeHead(403);
       res.end("Forbidden");
       return;
@@ -113,7 +212,11 @@ server.listen(port, host, () => {
   console.log(`PTCG PSA10 monitor: http://${host}:${port}`);
 });
 
-if (process.env.AUTO_REFRESH === "1") {
-  runRefresh();
-  setInterval(runRefresh, Number(process.env.REFRESH_MS || 300000));
+if (process.env.AUTO_REFRESH !== "0") {
+  fs.mkdir(runtimeDataRoot, { recursive: true })
+    .then(() => runRefresh("startup"))
+    .catch((error) => {
+      lastRefreshError = error.message;
+    });
+  setInterval(() => runRefresh("scheduled"), refreshMs);
 }

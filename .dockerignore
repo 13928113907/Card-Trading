@@ -1,0 +1,8 @@
+.git
+.github
+decision-desk
+outputs
+node_modules
+docs/captures
+web/captures
+*.zip

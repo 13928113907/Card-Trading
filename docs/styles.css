@@ -225,6 +225,25 @@ select {
   color: #075e58;
 }
 
+.price-change {
+  display: block;
+  margin-top: 4px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.price-change.up {
+  color: #b42318;
+}
+
+.price-change.down {
+  color: #067647;
+}
+
+.price-change.neutral {
+  color: var(--muted);
+}
+
 .metric-grid {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
@@ -312,7 +331,7 @@ label {
 
 table {
   width: 100%;
-  min-width: 1360px;
+  min-width: 1540px;
   border-collapse: collapse;
 }
 
@@ -447,6 +466,26 @@ tr.pending-row {
   border: 1px solid #d9e8e3;
   border-radius: 8px;
   background: #fbfffd;
+}
+
+.listing-image {
+  width: 100%;
+  height: 190px;
+  object-fit: contain;
+  border: 1px solid #e6edf4;
+  border-radius: 6px;
+  background: #fff;
+}
+
+.listing-thumb {
+  float: left;
+  width: 58px;
+  height: 76px;
+  margin-right: 10px;
+  object-fit: contain;
+  border: 1px solid #e6edf4;
+  border-radius: 4px;
+  background: #fff;
 }
 
 .muted-card {

@@ -1,0 +1,44 @@
+services:
+  collector:
+    build:
+      context: ..
+    restart: unless-stopped
+    environment:
+      AUTO_REFRESH: "1"
+      REFRESH_MS: "300000"
+      REFRESH_TIMEOUT_MS: "240000"
+      MANUAL_REFRESH_COOLDOWN_MS: "60000"
+      DATA_DIR: "/app/runtime/data"
+      CAPTURE_DIR: "/app/runtime/captures"
+      ALLOWED_ORIGINS: "${ALLOWED_ORIGINS}"
+      EBAY_CLIENT_ID: "${EBAY_CLIENT_ID:-}"
+      EBAY_CLIENT_SECRET: "${EBAY_CLIENT_SECRET:-}"
+      SNKRDUNK_FEED_URL: "${SNKRDUNK_FEED_URL:-}"
+      SNKRDUNK_FEED_TOKEN: "${SNKRDUNK_FEED_TOKEN:-}"
+    volumes:
+      - collector_runtime:/app/runtime
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4173/healthz').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+
+  caddy:
+    image: caddy:2.8-alpine
+    restart: unless-stopped
+    depends_on:
+      - collector
+    environment:
+      API_DOMAIN: "${API_DOMAIN}"
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  collector_runtime:
+  caddy_data:
+  caddy_config:

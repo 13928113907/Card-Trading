@@ -1,12 +1,15 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { chromium } from "playwright";
+import { fileURLToPath } from "node:url";
+import { collectSnkrdunk } from "./sources/snkrdunk.mjs";
 
-const root = "/Users/be/Documents/宝可梦拍卖";
+const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const samplePath = path.join(root, "web/data/auctions.example.json");
 const marketPath = path.join(root, "web/data/market-year.json");
-const outputPath = path.join(root, "web/data/auctions.live.json");
-const captureDir = path.join(root, "web/captures");
+const outputPath = path.resolve(process.env.LIVE_OUTPUT_PATH || path.join(root, "web/data/auctions.live.json"));
+const docsOutputPath = path.join(root, "docs/data/auctions.live.json");
+const captureDir = path.resolve(process.env.CAPTURE_DIR || path.join(root, "web/captures"));
 const usdCny = Number(process.env.USD_CNY || 7.2);
 const twdCny = Number(process.env.TWD_CNY || 0.22);
 const jpyCny = Number(process.env.JPY_CNY || 0.049);
@@ -293,6 +296,11 @@ function slug(text) {
   return text.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 80);
 }
 
+function ebayListingId(url) {
+  const itemId = String(url || "").match(/\/itm\/(?:[^/]+\/)?(\d{9,15})/)?.[1];
+  return itemId ? `ebay:${itemId}` : null;
+}
+
 function ebaySearchUrl(query) {
   const url = new URL("https://www.ebay.com/sch/i.html");
   url.searchParams.set("_nkw", query);
@@ -316,8 +324,23 @@ function parsePriceToCny(text) {
   return Math.round(Number(match[3] || match[4] || 0));
 }
 
-function futureEnd(hoursFromNow = 72) {
-  return new Date(Date.now() + hoursFromNow * 3600000).toISOString();
+function amountToCny(value, currency = "USD") {
+  const amount = Number(value);
+  if (!Number.isFinite(amount) || amount <= 0) return 0;
+  if (currency === "USD") return Math.round(amount * usdCny);
+  if (currency === "JPY") return Math.round(amount * jpyCny);
+  if (currency === "TWD") return Math.round(amount * twdCny);
+  return Math.round(amount);
+}
+
+function parseAuctionEnd(text, capturedAt = Date.now()) {
+  const value = String(text || "").toLowerCase();
+  if (!value) return null;
+  const days = Number(value.match(/(\d+)\s*(?:d|day|days|天)/)?.[1] || 0);
+  const hours = Number(value.match(/(\d+)\s*(?:h|hr|hrs|hour|hours|小时)/)?.[1] || 0);
+  const minutes = Number(value.match(/(\d+)\s*(?:m|min|mins|minute|minutes|分)/)?.[1] || 0);
+  const durationMs = ((days * 24 + hours) * 60 + minutes) * 60000;
+  return durationMs > 0 ? new Date(capturedAt + durationMs).toISOString() : null;
 }
 
 function titleMatchesTarget(title, target) {
@@ -364,12 +387,24 @@ async function scrapeEbay(page, target) {
   await page.waitForTimeout(2500);
   const capturePath = path.join(captureDir, `ebay-${slug(target.query)}.png`);
   await page.screenshot({ path: capturePath, fullPage: true });
-  let rows = await page.$$eval(".s-item", (items) =>
+  let rows = await page.$$eval(".s-item, .s-card, [data-testid='item-card']", (items) =>
     items.slice(0, 10).map((item) => ({
-      title: item.querySelector(".s-item__title")?.textContent?.trim() || "",
-      price: item.querySelector(".s-item__price")?.textContent?.trim() || "",
-      end: item.querySelector(".s-item__time-left")?.textContent?.trim() || "",
-      url: item.querySelector("a.s-item__link")?.href || "",
+      title:
+        item.querySelector(".s-item__title, .s-card__title, [data-testid='item-title']")?.textContent?.trim() || "",
+      price:
+        item.querySelector(".s-item__price, .s-card__price, [data-testid='item-price']")?.textContent?.trim() || "",
+      end:
+        item.querySelector(".s-item__time-left, .s-card__time-left, [data-testid='item-time-left']")?.textContent?.trim() || "",
+      url:
+        item.querySelector("a.s-item__link, a.s-card__link, a[data-testid='item-link'], a[href*='/itm/']")?.href || "",
+      imageUrl:
+        item.querySelector(".s-item__image img, .s-card__image img, [data-testid='item-image'] img")?.currentSrc ||
+        item.querySelector(".s-item__image img, .s-card__image img, [data-testid='item-image'] img")?.src ||
+        "",
+      shippingFrom:
+        item.querySelector(".s-item__location")?.textContent?.replace(/^from\s+/i, "").trim() ||
+        item.querySelector(".s-item__itemLocation")?.textContent?.replace(/^from\s+/i, "").trim() ||
+        "",
     }))
   );
   if (rows.length === 0) {
@@ -396,14 +431,23 @@ async function scrapeEbay(page, target) {
     rows = parsed;
   }
   return rows
-    .filter((row) => titleMatchesTarget(row.title, target) && parsePriceToCny(row.price) >= minPsa10PriceCny)
+    .filter(
+      (row) =>
+        titleMatchesTarget(row.title, target) &&
+        parsePriceToCny(row.price) >= minPsa10PriceCny &&
+        ebayListingId(row.url) &&
+        row.imageUrl
+    )
     .slice(0, maxPerQuery)
-    .map((row, index) => {
+    .map((row) => {
+      const capturedAt = new Date();
       const currentBidCny = parsePriceToCny(row.price);
       const defaults = platformDefaults.eBay;
+      const sourceListingId = ebayListingId(row.url || url);
       return {
         ...target,
-        id: `${target.id}-ebay-${index + 1}`,
+        id: `${target.id}-${sourceListingId.replace(":", "-")}`,
+        sourceListingId,
         psaCert: "PSA 10",
         platform: "eBay",
         currentBidCny,
@@ -413,51 +457,121 @@ async function scrapeEbay(page, target) {
         shippingCny: defaults.shippingCny,
         taxCny: 0,
         otherCostCny: 30,
-        holdingStartAt: new Date().toISOString(),
-        auctionEndAt: futureEnd(72),
-        status: "实时/eBay页面截取",
-        url: row.url || url,
+        holdingStartAt: capturedAt.toISOString(),
+        auctionStartAt: null,
+        auctionEndAt: parseAuctionEnd(row.end, capturedAt.getTime()),
+        shippingFrom: row.shippingFrom || null,
+        status: "实时/eBay商品页",
+        url: row.url,
+        imageUrl: row.imageUrl,
         sourceTitle: row.title,
         sourcePriceText: row.price,
         sourceEndText: row.end,
         screenshot: `/captures/${path.basename(capturePath)}`,
-        lastCapturedAt: new Date().toISOString(),
+        lastCapturedAt: capturedAt.toISOString(),
       };
     });
 }
 
-function linkedMonitorRows(target) {
-  return ["ALT", "Card Hobby", "Fanatics Collect", "PokerColor"].map((platform) => {
-    const defaults = platformDefaults[platform];
-    const searchBase = {
-      ALT: "https://www.alt.xyz/",
-      "Card Hobby": "http://www.cardhobby.com.cn/",
-      "Fanatics Collect": "https://www.fanaticscollect.com/",
-      PokerColor: "https://pokecolor.com/",
-    }[platform];
-    return {
-      ...target,
-      id: `${target.id}-${slug(platform)}`,
-      psaCert: "PSA 10",
-      platform,
-      currentBidCny: 0,
-      expectedSaleCny: 0,
-      feeRate: defaults.feeRate,
-      paymentFeeRate: defaults.paymentFeeRate,
-      shippingCny: defaults.shippingCny,
-      taxCny: 0,
-      otherCostCny: 0,
-      holdingStartAt: new Date().toISOString(),
-      auctionEndAt: futureEnd(96),
-      status: "待登录/待解析",
-      url: searchBase,
-      alternateUrl: platform === "PokerColor" ? "https://pokecolor.cn/h5/" : undefined,
-      lastCapturedAt: new Date().toISOString(),
-    };
+async function getEbayToken() {
+  if (!process.env.EBAY_CLIENT_ID || !process.env.EBAY_CLIENT_SECRET) return null;
+  const credentials = Buffer.from(`${process.env.EBAY_CLIENT_ID}:${process.env.EBAY_CLIENT_SECRET}`).toString("base64");
+  const response = await fetch("https://api.ebay.com/identity/v1/oauth2/token", {
+    method: "POST",
+    headers: {
+      authorization: `Basic ${credentials}`,
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: new URLSearchParams({
+      grant_type: "client_credentials",
+      scope: "https://api.ebay.com/oauth/api_scope",
+    }),
   });
+  if (!response.ok) throw new Error(`eBay OAuth HTTP ${response.status}`);
+  return (await response.json()).access_token;
+}
+
+async function collectEbayApi(targets) {
+  const token = await getEbayToken();
+  if (!token) return null;
+  const rows = [];
+  const errors = [];
+  let queryCount = 0;
+  for (const target of targets) {
+    try {
+      const url = new URL("https://api.ebay.com/buy/browse/v1/item_summary/search");
+      url.searchParams.set("q", target.query);
+      url.searchParams.set("limit", String(maxPerQuery));
+      url.searchParams.set("filter", "buyingOptions:{AUCTION}");
+      const response = await fetch(url, {
+        headers: {
+          authorization: `Bearer ${token}`,
+          "x-ebay-c-marketplace-id": "EBAY_US",
+        },
+      });
+      if (!response.ok) throw new Error(`Browse API HTTP ${response.status}`);
+      const payload = await response.json();
+      queryCount += 1;
+      for (const item of payload.itemSummaries || []) {
+        const listingId = String(item.legacyItemId || item.itemId || "").match(/\d{9,15}/)?.[0];
+        const price = item.currentBidPrice || item.price;
+        const currentBidCny = amountToCny(price?.value, price?.currency);
+        if (
+          !listingId ||
+          !item.itemWebUrl ||
+          !item.image?.imageUrl ||
+          currentBidCny < minPsa10PriceCny ||
+          !titleMatchesTarget(item.title || "", target)
+        ) {
+          continue;
+        }
+        const checkedAt = new Date().toISOString();
+        rows.push({
+          ...target,
+          id: `${target.id}-ebay-${listingId}`,
+          sourceListingId: `ebay:${listingId}`,
+          psaCert: "PSA 10",
+          platform: "eBay",
+          currentBidCny,
+          expectedSaleCny: expectedSaleCny(target),
+          feeRate: platformDefaults.eBay.feeRate,
+          paymentFeeRate: platformDefaults.eBay.paymentFeeRate,
+          shippingCny: platformDefaults.eBay.shippingCny,
+          taxCny: 0,
+          otherCostCny: 30,
+          holdingStartAt: checkedAt,
+          auctionStartAt: item.itemCreationDate || null,
+          auctionEndAt: item.itemEndDate || null,
+          shippingFrom: [item.itemLocation?.city, item.itemLocation?.stateOrProvince, item.itemLocation?.country]
+            .filter(Boolean)
+            .join(", ") || null,
+          status: "实时/eBay Browse API",
+          url: item.itemWebUrl,
+          imageUrl: item.image.imageUrl,
+          sourceTitle: item.title,
+          sourcePriceText: `${price.currency} ${price.value}`,
+          sourceEndText: "",
+          lastCapturedAt: checkedAt,
+        });
+      }
+    } catch (error) {
+      errors.push({ targetId: target.id, message: error.message });
+    }
+  }
+  return { rows, errors, queryCount, mode: "api" };
+}
+
+function unavailableSourceStatuses(checkedAt) {
+  return [
+    ["alt", "ALT", "需要已登录的数据接口"],
+    ["cardhobby", "Card Hobby", "需要已登录的网页采集器"],
+    ["fanatics", "Fanatics Collect", "需要已登录的数据接口"],
+    ["pokecolor", "PokeColor", "需要已登录的网页或 App 采集器"],
+  ].map(([id, name, message]) => ({ id, name, connected: false, checkedAt, count: 0, message }));
 }
 
 async function main() {
+  await fs.mkdir(path.dirname(outputPath), { recursive: true });
   await fs.mkdir(captureDir, { recursive: true });
   const sample = JSON.parse(await fs.readFile(samplePath, "utf8"));
   const market = JSON.parse(await fs.readFile(marketPath, "utf8"));
@@ -472,52 +586,92 @@ async function main() {
       sourceUrl: card.sourceUrl,
       priceConfidence: card.confidence,
     }));
+  const previousPayload = await fs.readFile(outputPath, "utf8").then(JSON.parse).catch(() => ({ auctions: [] }));
   const auctions = [];
-  const browser = await launchBrowser();
-  const page = await browser.newPage({ viewport: { width: 1440, height: 1100 } });
-  for (const target of targets) {
-    try {
-      const ebayRows = await scrapeEbay(page, target);
-      auctions.push(...ebayRows);
-    } catch (error) {
-      auctions.push({
-        id: `${slug(target.category)}-${slug(target.query)}-ebay-error`,
-        ...target,
-        psaCert: "PSA 10",
-        platform: "eBay",
-        currentBidCny: 0,
-        expectedSaleCny: 0,
-        feeRate: platformDefaults.eBay.feeRate,
-        paymentFeeRate: platformDefaults.eBay.paymentFeeRate,
-        shippingCny: platformDefaults.eBay.shippingCny,
-        taxCny: 0,
-        otherCostCny: 0,
-        holdingStartAt: new Date().toISOString(),
-        auctionEndAt: futureEnd(72),
-        status: "抓取失败",
-        url: ebaySearchUrl(target.query),
-        lastCapturedAt: new Date().toISOString(),
-        error: error.message,
-      });
+  const ebayErrors = [];
+  let ebayQueriesCompleted = 0;
+  let ebayMode = "browser";
+  const ebayApi = await collectEbayApi(targets);
+  if (ebayApi) {
+    auctions.push(...ebayApi.rows);
+    ebayErrors.push(...ebayApi.errors);
+    ebayQueriesCompleted = ebayApi.queryCount;
+    ebayMode = ebayApi.mode;
+  } else {
+    const browser = await launchBrowser();
+    const page = await browser.newPage({ viewport: { width: 1440, height: 1100 } });
+    for (const target of targets) {
+      try {
+        const ebayRows = await scrapeEbay(page, target);
+        auctions.push(...ebayRows);
+        ebayQueriesCompleted += 1;
+      } catch (error) {
+        ebayErrors.push({ targetId: target.id, message: error.message });
+      }
     }
-    auctions.push(...linkedMonitorRows(target));
+    await browser.close();
   }
-  await browser.close();
 
-  const enrichedAuctions = auctions.map(enrichFinancials);
+  const snkrdunk = await collectSnkrdunk({
+    targets,
+    rates: { usdCny, twdCny, jpyCny },
+    expectedSaleCny,
+  });
+  auctions.push(...snkrdunk.rows);
+  if (auctions.length === 0) {
+    throw new Error(`No verified listings collected; preserving previous snapshot. eBay errors: ${ebayErrors.length}`);
+  }
+
+  const previousByListing = new Map(
+    (previousPayload.auctions || [])
+      .filter((row) => row.sourceListingId && row.currentBidCny > 0)
+      .map((row) => [row.sourceListingId, row])
+  );
+  const enrichedAuctions = auctions.map((item) => {
+    const previous = previousByListing.get(item.sourceListingId);
+    const priceChangeCny = previous ? item.currentBidCny - previous.currentBidCny : null;
+    return enrichFinancials({
+      ...item,
+      holdingStartAt: previous?.holdingStartAt || item.holdingStartAt,
+      previousBidCny: previous?.currentBidCny ?? null,
+      priceChangeCny,
+      priceChangePct: previous?.currentBidCny > 0 ? priceChangeCny / previous.currentBidCny : null,
+      priceChangeSinceAt: previous?.lastCapturedAt || previousPayload.lastUpdatedAt || null,
+    });
+  });
   const opportunities = enrichedAuctions
     .filter((row) => row.currentBidCny > 0 && row.roi >= minOpportunityRoi)
     .sort((a, b) => b.actualProfitCny - a.actualProfitCny);
 
   const payload = {
     lastUpdatedAt: new Date().toISOString(),
-    source: "local-browser-monitor",
+    source: "server-browser-monitor",
+    mode: "live",
+    snapshotIntervalSeconds: 300,
+    sources: [
+      {
+        id: "ebay",
+        name: "eBay",
+        connected: ebayQueriesCompleted > 0,
+        checkedAt: new Date().toISOString(),
+        count: enrichedAuctions.filter((row) => row.platform === "eBay").length,
+        mode: ebayMode,
+        queryCount: ebayQueriesCompleted,
+        errorCount: ebayErrors.length,
+        message: ebayErrors.length ? `${ebayErrors.length} 个检索失败` : "抓取完成",
+      },
+      snkrdunk.status,
+      ...unavailableSourceStatuses(new Date().toISOString()),
+    ],
     minOpportunityRoi,
-    auctions: enrichedAuctions.length ? enrichedAuctions : sample.auctions,
+    auctions: enrichedAuctions,
     opportunities,
     watchlist: sample.watchlist,
   };
   await fs.writeFile(outputPath, JSON.stringify(payload, null, 2));
+  if (process.env.WRITE_DOCS_SNAPSHOT === "1") {
+    await fs.writeFile(docsOutputPath, JSON.stringify(payload, null, 2));
+  }
   console.log(outputPath);
 }
 

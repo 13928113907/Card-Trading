@@ -2,6 +2,7 @@ const FALLBACK_URL = "./data/auctions.example.json";
 const MARKET_URL = "./data/market-year.json";
 const LIVE_URL = "./data/auctions.live.json";
 const AUTO_REFRESH_MS = 5 * 60 * 1000;
+const API_BASE_URL = String(window.CARD_TRADING_CONFIG?.apiBaseUrl || "").replace(/\/+$/, "");
 
 let auctions = [];
 let watchlist = [];
@@ -11,6 +12,7 @@ let marketEvents = [];
 let marketMeta = null;
 let lastUpdatedAt = null;
 let dataMode = "local";
+let sourceStatus = [];
 
 const state = {
   type: "全部",
@@ -87,13 +89,37 @@ function daysBetween(from, to = new Date()) {
 }
 
 function remainingText(date) {
+  if (!date) return "平台未提供";
   const ms = new Date(date).getTime() - Date.now();
-  if (!Number.isFinite(ms) || ms <= 0) return "已结束";
+  if (!Number.isFinite(ms)) return "平台未提供";
+  if (ms <= 0) return "已结束";
   const minutes = Math.floor(ms / 60000);
   const days = Math.floor(minutes / 1440);
   const hours = Math.floor((minutes % 1440) / 60);
   if (days) return `${days}天${hours}小时`;
   return `${hours}小时${minutes % 60}分`;
+}
+
+function dateText(value) {
+  if (!value) return "未提供";
+  const date = new Date(value);
+  return Number.isFinite(date.getTime()) ? dateTime.format(date) : "未提供";
+}
+
+function assetUrl(value) {
+  if (!value || /^(?:https?:|data:)/i.test(value)) return value || "";
+  if (API_BASE_URL && value.startsWith("/")) return `${API_BASE_URL}${value}`;
+  return value;
+}
+
+function priceChangeMarkup(row) {
+  if (!isNumber(row.priceChangeCny) || !isNumber(row.previousBidCny)) {
+    return `<small class="price-change neutral">等待下一轮快照</small>`;
+  }
+  const direction = row.priceChangeCny > 0 ? "up" : row.priceChangeCny < 0 ? "down" : "neutral";
+  const sign = row.priceChangeCny > 0 ? "+" : "";
+  const changePct = isNumber(row.priceChangePct) ? ` · ${sign}${pct.format(row.priceChangePct)}` : "";
+  return `<small class="price-change ${direction}">较上一轮 ${sign}${yuan.format(row.priceChangeCny)}${changePct}</small>`;
 }
 
 function calcFees(item) {
@@ -348,7 +374,8 @@ function renderActionList() {
 
 function renderMetrics(rows) {
   const positive = rows.filter((row) => row.roi >= 0.2);
-  const nearest = rows.reduce((best, row) => {
+  const endingRows = rows.filter((row) => row.auctionEndAt && new Date(row.auctionEndAt) > new Date());
+  const nearest = endingRows.reduce((best, row) => {
     if (!best) return row;
     return new Date(row.auctionEndAt) < new Date(best.auctionEndAt) ? row : best;
   }, null);
@@ -380,7 +407,9 @@ function renderOpportunities() {
     const fees = row.feesCny ?? row.fees?.total ?? 0;
     const card = document.createElement("article");
     card.className = "opportunity-card";
+    const image = assetUrl(row.imageUrl || row.screenshot);
     card.innerHTML = `
+      ${image ? `<img class="listing-image" src="${image}" alt="${row.cnName}" loading="lazy" referrerpolicy="no-referrer" />` : ""}
       <div class="opportunity-head">
         <span class="tag">${row.category}</span>
         <strong>${row.cnName}</strong>
@@ -398,7 +427,7 @@ function renderOpportunities() {
         <span>${row.sourcePriceText || ""} ${row.sourceEndText || ""}</span>
         <a class="link-button" href="${row.url}" target="_blank" rel="noreferrer">打开</a>
         ${row.alternateUrl ? `<a class="capture-link" href="${row.alternateUrl}" target="_blank" rel="noreferrer">H5</a>` : ""}
-        ${row.screenshot ? `<a class="capture-link" href="${row.screenshot}" target="_blank" rel="noreferrer">截图</a>` : ""}
+        ${row.screenshot ? `<a class="capture-link" href="${assetUrl(row.screenshot)}" target="_blank" rel="noreferrer">截图</a>` : ""}
       </div>
     `;
     opportunityGrid.append(card);
@@ -414,20 +443,22 @@ function rowClass(row) {
 function renderTable(rows) {
   auctionBody.innerHTML = "";
   if (!rows.length) {
-    auctionBody.innerHTML = `<tr><td colspan="13" class="empty-cell">没有匹配的拍卖条目</td></tr>`;
+    auctionBody.innerHTML = `<tr><td colspan="14" class="empty-cell">没有匹配的实时拍卖条目</td></tr>`;
     return;
   }
   rows.forEach((row) => {
     const tr = document.createElement("tr");
     tr.className = rowClass(row);
+    const image = assetUrl(row.imageUrl || row.screenshot);
     tr.innerHTML = `
       <td><span class="tag">${row.type}</span><span class="subtag">${row.category}</span></td>
       <td>
+        ${image ? `<img class="listing-thumb" src="${image}" alt="${row.cnName}" loading="lazy" referrerpolicy="no-referrer" />` : ""}
         <strong>${row.cnName}</strong>
         <small>${row.sourceTitle || `${row.cardName} · ${row.set} · ${row.language} · ${row.psaCert}`}</small>
       </td>
       <td><span class="platform-pill">${row.platform}</span></td>
-      <td class="money">${yuan.format(row.currentBidCny)}</td>
+      <td class="money">${yuan.format(row.currentBidCny)}${priceChangeMarkup(row)}</td>
       <td class="money">${yuan.format(row.expectedSaleCny)}</td>
       <td class="money">${yuan.format(row.grossProfit)}</td>
       <td>
@@ -437,12 +468,13 @@ function renderTable(rows) {
       <td class="money emphasis">${yuan.format(row.actualProfit)}</td>
       <td class="roi">${pct.format(row.roi)}</td>
       <td>${row.holdingDays}天</td>
-      <td>${remainingText(row.auctionEndAt)}<small>${dateTime.format(new Date(row.auctionEndAt))}</small></td>
-      <td><span class="status">${row.status}</span><small>${row.lastCapturedAt ? dateTime.format(new Date(row.lastCapturedAt)) : ""}</small></td>
+      <td><span>${dateText(row.auctionStartAt)}</span><small>结束 ${dateText(row.auctionEndAt)} · ${remainingText(row.auctionEndAt)}</small></td>
+      <td>${row.shippingFrom || "平台未提供"}</td>
+      <td><span class="status">${row.status}</span><small>抓取 ${dateText(row.lastCapturedAt)}</small></td>
       <td>
         <a class="link-button" href="${row.url}" target="_blank" rel="noreferrer">打开</a>
         ${row.alternateUrl ? `<a class="capture-link" href="${row.alternateUrl}" target="_blank" rel="noreferrer">H5</a>` : ""}
-        ${row.screenshot ? `<a class="capture-link" href="${row.screenshot}" target="_blank" rel="noreferrer">截图</a>` : ""}
+        ${row.screenshot ? `<a class="capture-link" href="${assetUrl(row.screenshot)}" target="_blank" rel="noreferrer">截图</a>` : ""}
       </td>
     `;
     auctionBody.append(tr);
@@ -490,12 +522,19 @@ function renderWatchlist() {
 }
 
 function renderStatus() {
-  const modeText = dataMode === "live" ? "静态发布数据" : "静态样例数据";
-  refreshStatus.textContent = `${modeText} · 上次更新 ${lastUpdatedAt ? dateTime.format(new Date(lastUpdatedAt)) : "--"}`;
-  dataModeNote.textContent =
-    dataMode === "live"
-      ? "数据来自随网站发布的监控文件；页面每 5 分钟自动重新读取。"
-      : "当前为样例兜底；发布数据文件缺失时自动读取样例。";
+  const modeText = dataMode === "api" ? "服务器实时数据" : dataMode === "live" ? "静态发布数据" : "静态样例数据";
+  const ageMinutes = lastUpdatedAt ? Math.max(0, Math.floor((Date.now() - new Date(lastUpdatedAt).getTime()) / 60000)) : null;
+  const freshness = ageMinutes === null ? "" : ageMinutes <= 10 ? ` · ${ageMinutes} 分钟前` : ` · 已过期 ${ageMinutes} 分钟`;
+  refreshStatus.textContent = `${modeText} · 上次更新 ${lastUpdatedAt ? dateTime.format(new Date(lastUpdatedAt)) : "--"}${freshness}`;
+  if (dataMode === "api") {
+    const connected = sourceStatus.filter((source) => source.connected).map((source) => `${source.name} ${source.count ?? 0}条`);
+    const unavailable = sourceStatus.filter((source) => !source.connected).map((source) => source.name);
+    dataModeNote.textContent = `真实数据源：${connected.join("、") || "暂无"}。未接通：${unavailable.join("、") || "无"}。服务器每 5 分钟抓取一次。`;
+  } else if (dataMode === "live") {
+    dataModeNote.textContent = "当前仍是 GitHub 静态快照；配置 HTTPS 实时 API 后才会产生新价格和浮动。";
+  } else {
+    dataModeNote.textContent = "当前为样例兜底；实时服务器和发布数据均不可用。";
+  }
 }
 
 function render() {
@@ -526,22 +565,45 @@ function loadErrorMessage(error) {
 
 async function loadData() {
   try {
-    const response = await fetch(`${LIVE_URL}?t=${Date.now()}`, { cache: "no-store" });
+    const endpoint = API_BASE_URL ? `${API_BASE_URL}/api/auctions` : LIVE_URL;
+    const response = await fetch(`${endpoint}?t=${Date.now()}`, { cache: "no-store" });
     if (!response.ok) throw new Error("live endpoint unavailable");
     const payload = await response.json();
     auctions = payload.auctions || [];
     opportunities = payload.opportunities || [];
     watchlist = payload.watchlist || [];
     lastUpdatedAt = payload.lastUpdatedAt || new Date().toISOString();
-    dataMode = "live";
+    sourceStatus = payload.sources || [];
+    dataMode =
+      API_BASE_URL && payload.mode === "live"
+        ? "api"
+        : payload.mode === "sample"
+          ? "local"
+          : API_BASE_URL
+            ? "api"
+            : "live";
   } catch {
-    const response = await fetch(`${FALLBACK_URL}?t=${Date.now()}`, { cache: "no-store" });
-    const payload = await response.json();
-    auctions = payload.auctions || [];
-    opportunities = payload.opportunities || [];
-    watchlist = payload.watchlist || [];
-    lastUpdatedAt = payload.lastUpdatedAt || new Date().toISOString();
-    dataMode = "local";
+    try {
+      const fallbackEndpoint = API_BASE_URL ? LIVE_URL : FALLBACK_URL;
+      const response = await fetch(`${fallbackEndpoint}?t=${Date.now()}`, { cache: "no-store" });
+      if (!response.ok) throw new Error("published data unavailable");
+      const payload = await response.json();
+      auctions = payload.auctions || [];
+      opportunities = payload.opportunities || [];
+      watchlist = payload.watchlist || [];
+      lastUpdatedAt = payload.lastUpdatedAt || new Date().toISOString();
+      sourceStatus = [];
+      dataMode = API_BASE_URL ? "live" : "local";
+    } catch {
+      const response = await fetch(`${FALLBACK_URL}?t=${Date.now()}`, { cache: "no-store" });
+      const payload = await response.json();
+      auctions = payload.auctions || [];
+      opportunities = payload.opportunities || [];
+      watchlist = payload.watchlist || [];
+      lastUpdatedAt = payload.lastUpdatedAt || new Date().toISOString();
+      sourceStatus = [];
+      dataMode = "local";
+    }
   }
   try {
     const response = await fetch(`${MARKET_URL}?t=${Date.now()}`, { cache: "no-store" });
@@ -559,17 +621,45 @@ async function loadData() {
 async function triggerRefresh() {
   refreshButton.disabled = true;
   refreshButton.textContent = "读取中";
-  refreshStatus.textContent = "正在重新读取已发布的数据文件...";
+  refreshStatus.textContent = API_BASE_URL ? "服务器正在抓取各平台最新价格..." : "正在重新读取已发布的数据文件...";
   try {
+    if (API_BASE_URL) {
+      const response = await fetch(`${API_BASE_URL}/api/refresh`, {
+        method: "POST",
+        cache: "no-store",
+      });
+      const result = await response.json();
+      if (!response.ok || !result.ok) throw new Error(result.message || "服务器抓取失败");
+      await waitForRefresh(result.refreshRunId);
+    }
     await loadData();
     const sourceTime = lastUpdatedAt ? dateTime.format(new Date(lastUpdatedAt)) : "--";
-    refreshStatus.textContent = `读取成功 ${dateTime.format(new Date())} · 数据文件更新 ${sourceTime}`;
+    refreshStatus.textContent = `${API_BASE_URL ? "抓取完成" : "读取成功"} ${dateTime.format(new Date())} · 数据更新 ${sourceTime}`;
   } catch (error) {
     refreshStatus.textContent = loadErrorMessage(error);
   } finally {
     refreshButton.disabled = false;
     refreshButton.textContent = "重新读取";
   }
+}
+
+async function waitForRefresh(runId) {
+  const deadline = Date.now() + 5 * 60 * 1000;
+  while (Date.now() < deadline) {
+    await new Promise((resolve) => window.setTimeout(resolve, 2000));
+    const response = await fetch(`${API_BASE_URL}/api/status?t=${Date.now()}`, { cache: "no-store" });
+    if (!response.ok) throw new Error("无法读取服务器刷新状态");
+    const status = await response.json();
+    if (status.refreshing || status.refreshRunId < runId) {
+      refreshStatus.textContent = `服务器抓取中 · 任务 ${status.refreshRunId}`;
+      continue;
+    }
+    if (!status.refreshResult?.ok) {
+      throw new Error(status.lastRefreshError || status.refreshResult?.message || "服务器抓取失败");
+    }
+    return;
+  }
+  throw new Error("服务器抓取超时，请稍后查看状态");
 }
 
 function exportWatchlistCsv() {
