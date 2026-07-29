@@ -17,6 +17,9 @@ const maxPerQuery = Number(process.env.MAX_PER_QUERY || 8);
 const minPsa10PriceCny = Number(process.env.MIN_PSA10_PRICE_CNY || 500);
 const minOpportunityRoi = Number(process.env.MIN_OPPORTUNITY_ROI || 0.2);
 const snapshotIntervalSeconds = Math.round(Number(process.env.REFRESH_MS || 60000) / 1000);
+const browserStateDir = process.env.BROWSER_STATE_DIR
+  ? path.resolve(process.env.BROWSER_STATE_DIR)
+  : null;
 
 const platformDefaults = {
   eBay: { feeRate: 0.13, paymentFeeRate: 0.03, shippingCny: 140 },
@@ -391,6 +394,18 @@ async function launchBrowser() {
   }
 }
 
+async function newPlatformContext(browser, platform) {
+  const options = { viewport: { width: 1440, height: 1100 } };
+  if (!browserStateDir) return browser.newContext(options);
+  const storageState = path.join(browserStateDir, `${platform}.json`);
+  try {
+    await fs.access(storageState);
+    return await browser.newContext({ ...options, storageState });
+  } catch {
+    return browser.newContext(options);
+  }
+}
+
 async function scrapeEbay(page, target) {
   const url = ebaySearchUrl(target.query);
   await page.goto(url, { waitUntil: "domcontentloaded", timeout: 45000 });
@@ -639,7 +654,8 @@ async function main() {
     ebayMode = ebayApi.mode;
   } else {
     const browser = await launchBrowser();
-    const page = await browser.newPage({ viewport: { width: 1440, height: 1100 } });
+    const context = await newPlatformContext(browser, "ebay");
+    const page = await context.newPage();
     for (const target of targets) {
       try {
         const ebayResult = await scrapeEbay(page, target);
@@ -650,6 +666,7 @@ async function main() {
         ebayErrors.push({ targetId: target.id, message: error.message });
       }
     }
+    await context.close();
     await browser.close();
   }
 

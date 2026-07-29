@@ -2,6 +2,7 @@
 .github
 decision-desk
 outputs
+secrets
 node_modules
 docs/captures
 web/captures

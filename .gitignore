@@ -6,6 +6,7 @@ node_modules/
 # Local runtime/cache files
 .env
 .env.*
+secrets/
 
 # Keep generated site assets and workbook outputs, but ignore transient inspection dumps.
 *.inspect.ndjson

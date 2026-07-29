@@ -10,6 +10,7 @@ services:
       MANUAL_REFRESH_COOLDOWN_MS: "${MANUAL_REFRESH_COOLDOWN_MS:-15000}"
       DATA_DIR: "/app/runtime/data"
       CAPTURE_DIR: "/app/runtime/captures"
+      BROWSER_STATE_DIR: "/app/secrets/browser-state"
       ALLOWED_ORIGINS: "${ALLOWED_ORIGINS}"
       EBAY_CLIENT_ID: "${EBAY_CLIENT_ID:-}"
       EBAY_CLIENT_SECRET: "${EBAY_CLIENT_SECRET:-}"
@@ -17,6 +18,7 @@ services:
       SNKRDUNK_FEED_TOKEN: "${SNKRDUNK_FEED_TOKEN:-}"
     volumes:
       - collector_runtime:/app/runtime
+      - ../secrets/browser-state:/app/secrets/browser-state:ro
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4173/healthz').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
       interval: 30s

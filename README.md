@@ -28,6 +28,8 @@ docker compose --env-file deploy/.env -f deploy/compose.yaml up -d --build
 
 The default deployment domain is `card-trading-api.47-82-148-17.sslip.io`, which currently resolves to `47.82.148.17`. Caddy obtains and renews its HTTPS certificate automatically.
 
+Authenticated browser states live only in `secrets/browser-state/*.json`. Docker mounts this directory read-only at `/app/secrets/browser-state`; it is excluded from Git and the Docker build context.
+
 The live response contains verified rows only. Platforms that require a logged-in App or browser session appear under `sources` as disconnected and are not emitted as fake zero-price listings.
 
 For reliable eBay data, set `EBAY_CLIENT_ID` and `EBAY_CLIENT_SECRET` from an eBay Developer application. The collector then uses the official Browse API for stable listing IDs, direct URLs, original images, current auction prices, end times, and item locations. Browser collection remains a strict fallback and rejects rows without a listing ID, image, and direct item URL.
