@@ -5,9 +5,9 @@ services:
     restart: unless-stopped
     environment:
       AUTO_REFRESH: "1"
-      REFRESH_MS: "300000"
+      REFRESH_MS: "${REFRESH_MS:-60000}"
       REFRESH_TIMEOUT_MS: "240000"
-      MANUAL_REFRESH_COOLDOWN_MS: "60000"
+      MANUAL_REFRESH_COOLDOWN_MS: "${MANUAL_REFRESH_COOLDOWN_MS:-15000}"
       DATA_DIR: "/app/runtime/data"
       CAPTURE_DIR: "/app/runtime/captures"
       ALLOWED_ORIGINS: "${ALLOWED_ORIGINS}"

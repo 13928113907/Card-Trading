@@ -16,6 +16,7 @@ const jpyCny = Number(process.env.JPY_CNY || 0.049);
 const maxPerQuery = Number(process.env.MAX_PER_QUERY || 8);
 const minPsa10PriceCny = Number(process.env.MIN_PSA10_PRICE_CNY || 500);
 const minOpportunityRoi = Number(process.env.MIN_OPPORTUNITY_ROI || 0.2);
+const snapshotIntervalSeconds = Math.round(Number(process.env.REFRESH_MS || 60000) / 1000);
 
 const platformDefaults = {
   eBay: { feeRate: 0.13, paymentFeeRate: 0.03, shippingCny: 140 },
@@ -718,7 +719,7 @@ async function main() {
     dataStale: false,
     source: "server-browser-monitor",
     mode: "live",
-    snapshotIntervalSeconds: 300,
+    snapshotIntervalSeconds,
     sources: [
       {
         id: "ebay",

@@ -13,7 +13,7 @@ RUN mkdir -p /app/runtime/data /app/runtime/captures
 ENV HOST=0.0.0.0
 ENV PORT=4173
 ENV AUTO_REFRESH=1
-ENV REFRESH_MS=300000
+ENV REFRESH_MS=60000
 ENV DATA_DIR=/app/runtime/data
 ENV CAPTURE_DIR=/app/runtime/captures
 

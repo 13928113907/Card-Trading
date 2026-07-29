@@ -14,9 +14,9 @@ const samplePath = path.join(dataRoot, "auctions.example.json");
 const port = Number(process.env.PORT || 4173);
 const host = process.env.HOST || "0.0.0.0";
 const nodeBin = process.execPath;
-const refreshMs = Number(process.env.REFRESH_MS || 300000);
+const refreshMs = Number(process.env.REFRESH_MS || 60000);
 const refreshTimeoutMs = Number(process.env.REFRESH_TIMEOUT_MS || 240000);
-const manualRefreshCooldownMs = Number(process.env.MANUAL_REFRESH_COOLDOWN_MS || 60000);
+const manualRefreshCooldownMs = Number(process.env.MANUAL_REFRESH_COOLDOWN_MS || 15000);
 const allowedOrigins = new Set(
   String(process.env.ALLOWED_ORIGINS || "https://13928113907.github.io,http://localhost:4173,http://127.0.0.1:4173")
     .split(",")

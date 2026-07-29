@@ -8,11 +8,11 @@ After GitHub Pages is enabled for this repository, the site is served from:
 
 https://13928113907.github.io/Card-Trading/
 
-The GitHub Pages frontend reads `https://card-trading-api.47-82-148-17.sslip.io` and reloads the API every five minutes. The API domain resolves to the Singapore collector without placing a raw HTTP IP address in the browser configuration. If the API is unavailable, the frontend clearly labels and displays the published static snapshot instead.
+The GitHub Pages frontend reads `https://card-trading-api.47-82-148-17.sslip.io` and reloads the API every 60 seconds. The API domain resolves to the Singapore collector without placing a raw HTTP IP address in the browser configuration. If the API is unavailable, the frontend clearly labels and displays the published static snapshot instead.
 
 ## Live collector
 
-The collector runs Playwright every five minutes, keeps the previous verified listing snapshot, and adds `previousBidCny`, `priceChangeCny`, and `priceChangePct` to matching stable listing IDs. A manual refresh returns immediately and the frontend polls `/api/status` until the server-side collection finishes.
+The collector runs Playwright every 60 seconds, keeps the previous verified listing snapshot, and adds `previousBidCny`, `priceChangeCny`, and `priceChangePct` to matching stable listing IDs. A manual refresh returns immediately and the frontend polls `/api/status` until the server-side collection finishes.
 
 ```bash
 npm install
