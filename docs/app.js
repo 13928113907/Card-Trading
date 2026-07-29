@@ -5,6 +5,7 @@ const AUTO_REFRESH_MS = 5 * 60 * 1000;
 const API_BASE_URL = String(window.CARD_TRADING_CONFIG?.apiBaseUrl || "").replace(/\/+$/, "");
 
 let auctions = [];
+let candidateListings = [];
 let watchlist = [];
 let opportunities = [];
 let marketCards = [];
@@ -55,6 +56,8 @@ const categoryRank = document.querySelector("#categoryRank");
 const eventList = document.querySelector("#eventList");
 const actionList = document.querySelector("#actionList");
 const opportunityGrid = document.querySelector("#opportunityGrid");
+const candidateGrid = document.querySelector("#candidateGrid");
+const candidateCount = document.querySelector("#candidateCount");
 const watchlistGrid = document.querySelector("#watchlistGrid");
 const refreshStatus = document.querySelector("#refreshStatus");
 const refreshButton = document.querySelector("#refreshButton");
@@ -434,6 +437,45 @@ function renderOpportunities() {
   });
 }
 
+function renderCandidates() {
+  candidateGrid.innerHTML = "";
+  candidateCount.textContent = `${candidateListings.length} 条待核验`;
+  if (!candidateListings.length) {
+    candidateGrid.innerHTML = `<article class="candidate-card muted-card">当前没有缺少核验条件的候选。</article>`;
+    return;
+  }
+  candidateListings.forEach((row) => {
+    const image = assetUrl(row.imageUrl || row.screenshot);
+    const directUrl = row.sourceListingId && row.url && row.url !== row.searchUrl ? row.url : "";
+    const card = document.createElement("article");
+    card.className = "candidate-card";
+    card.innerHTML = `
+      ${image ? `<img class="listing-image" src="${image}" alt="${row.cnName}" loading="lazy" referrerpolicy="no-referrer" />` : ""}
+      <div class="candidate-head">
+        <span class="tag">${row.category}</span>
+        <span class="platform-pill">${row.platform}</span>
+      </div>
+      <strong>${row.cnName}</strong>
+      <p>${row.sourceTitle || row.cardName}</p>
+      <dl>
+        <div><dt>候选价格</dt><dd>${row.currentBidCny ? yuan.format(row.currentBidCny) : "未解析"}</dd></div>
+        <div><dt>剩余时间</dt><dd>${remainingText(row.auctionEndAt)}</dd></div>
+        <div><dt>发货地</dt><dd>${row.shippingFrom || "平台未提供"}</dd></div>
+      </dl>
+      <div class="issue-list">${(row.verificationIssues || ["核验条件不完整"])
+        .map((issue) => `<span>${issue}</span>`)
+        .join("")}</div>
+      <small>该条不参与实时涨跌、ROI 和利润排行 · 抓取 ${dateText(row.lastCapturedAt)}</small>
+      <div class="candidate-actions">
+        ${directUrl ? `<a class="link-button" href="${directUrl}" target="_blank" rel="noreferrer">商品页</a>` : ""}
+        <a class="link-button" href="${row.searchUrl || row.url}" target="_blank" rel="noreferrer">搜索页</a>
+        ${row.screenshot ? `<a class="capture-link" href="${assetUrl(row.screenshot)}" target="_blank" rel="noreferrer">截图</a>` : ""}
+      </div>
+    `;
+    candidateGrid.append(card);
+  });
+}
+
 function rowClass(row) {
   if (row.actualProfit <= 0) return "loss";
   if (row.roi >= 0.18) return "hot";
@@ -529,7 +571,7 @@ function renderStatus() {
   if (dataMode === "api") {
     const connected = sourceStatus.filter((source) => source.connected).map((source) => `${source.name} ${source.count ?? 0}条`);
     const unavailable = sourceStatus.filter((source) => !source.connected).map((source) => source.name);
-    dataModeNote.textContent = `真实数据源：${connected.join("、") || "暂无"}。未接通：${unavailable.join("、") || "无"}。服务器每 5 分钟抓取一次。`;
+    dataModeNote.textContent = `已核验：${connected.join("、") || "暂无"}；待核验候选 ${candidateListings.length} 条。未接通：${unavailable.join("、") || "无"}。服务器每 5 分钟抓取一次。`;
   } else if (dataMode === "live") {
     dataModeNote.textContent = "当前仍是 GitHub 静态快照；配置 HTTPS 实时 API 后才会产生新价格和浮动。";
   } else {
@@ -551,6 +593,7 @@ function render() {
   renderActionList();
   renderOpportunities();
   renderTable(rows);
+  renderCandidates();
   renderRanks(rows);
   renderWatchlist();
   renderStatus();
@@ -570,6 +613,7 @@ async function loadData() {
     if (!response.ok) throw new Error("live endpoint unavailable");
     const payload = await response.json();
     auctions = payload.auctions || [];
+    candidateListings = payload.candidates || [];
     opportunities = payload.opportunities || [];
     watchlist = payload.watchlist || [];
     lastUpdatedAt = payload.lastUpdatedAt || new Date().toISOString();
@@ -589,6 +633,7 @@ async function loadData() {
       if (!response.ok) throw new Error("published data unavailable");
       const payload = await response.json();
       auctions = payload.auctions || [];
+      candidateListings = payload.candidates || [];
       opportunities = payload.opportunities || [];
       watchlist = payload.watchlist || [];
       lastUpdatedAt = payload.lastUpdatedAt || new Date().toISOString();
@@ -598,6 +643,7 @@ async function loadData() {
       const response = await fetch(`${FALLBACK_URL}?t=${Date.now()}`, { cache: "no-store" });
       const payload = await response.json();
       auctions = payload.auctions || [];
+      candidateListings = payload.candidates || [];
       opportunities = payload.opportunities || [];
       watchlist = payload.watchlist || [];
       lastUpdatedAt = payload.lastUpdatedAt || new Date().toISOString();

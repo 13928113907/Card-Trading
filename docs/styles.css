@@ -488,6 +488,76 @@ tr.pending-row {
   background: #fff;
 }
 
+.candidate-panel,
+.candidate-panel + .panel {
+  margin-top: 14px;
+}
+
+.candidate-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(270px, 1fr));
+  gap: 10px;
+}
+
+.candidate-card {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid #ead8af;
+  border-radius: 8px;
+  background: #fffdf7;
+}
+
+.candidate-head,
+.candidate-actions,
+.issue-list {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex-wrap: wrap;
+}
+
+.candidate-card > strong {
+  font-size: 14px;
+}
+
+.candidate-card p,
+.candidate-card > small {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.candidate-card dl {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.candidate-card dl div {
+  display: block;
+}
+
+.candidate-card dt {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.candidate-card dd {
+  margin-top: 3px;
+  font-weight: 800;
+}
+
+.issue-list span {
+  padding: 4px 7px;
+  border: 1px solid #f0c36a;
+  border-radius: 5px;
+  background: #fff4d6;
+  color: #7a4b00;
+  font-size: 11px;
+  font-weight: 800;
+}
+
 .muted-card {
   color: var(--muted);
 }

@@ -296,6 +296,15 @@ function slug(text) {
   return text.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 80);
 }
 
+function stableHash(text) {
+  let hash = 2166136261;
+  for (const char of text) {
+    hash ^= char.charCodeAt(0);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(36);
+}
+
 function ebayListingId(url) {
   const itemId = String(url || "").match(/\/itm\/(?:[^/]+\/)?(\d{9,15})/)?.[1];
   return itemId ? `ebay:${itemId}` : null;
@@ -430,23 +439,23 @@ async function scrapeEbay(page, target) {
     }
     rows = parsed;
   }
-  return rows
-    .filter(
-      (row) =>
-        titleMatchesTarget(row.title, target) &&
-        parsePriceToCny(row.price) >= minPsa10PriceCny &&
-        ebayListingId(row.url) &&
-        row.imageUrl
-    )
+  const verified = [];
+  const candidates = [];
+  rows
+    .filter((row) => titleMatchesTarget(row.title, target) && parsePriceToCny(row.price) >= minPsa10PriceCny)
     .slice(0, maxPerQuery)
-    .map((row) => {
+    .forEach((row) => {
       const capturedAt = new Date();
       const currentBidCny = parsePriceToCny(row.price);
       const defaults = platformDefaults.eBay;
       const sourceListingId = ebayListingId(row.url || url);
-      return {
+      const verificationIssues = [
+        !sourceListingId && "缺少商品 ID",
+        (!row.url || row.url === url) && "缺少商品直达链接",
+        !row.imageUrl && "缺少原图",
+      ].filter(Boolean);
+      const base = {
         ...target,
-        id: `${target.id}-${sourceListingId.replace(":", "-")}`,
         sourceListingId,
         psaCert: "PSA 10",
         platform: "eBay",
@@ -461,8 +470,7 @@ async function scrapeEbay(page, target) {
         auctionStartAt: null,
         auctionEndAt: parseAuctionEnd(row.end, capturedAt.getTime()),
         shippingFrom: row.shippingFrom || null,
-        status: "实时/eBay商品页",
-        url: row.url,
+        url: row.url || url,
         imageUrl: row.imageUrl,
         sourceTitle: row.title,
         sourcePriceText: row.price,
@@ -470,7 +478,23 @@ async function scrapeEbay(page, target) {
         screenshot: `/captures/${path.basename(capturePath)}`,
         lastCapturedAt: capturedAt.toISOString(),
       };
+      if (verificationIssues.length) {
+        candidates.push({
+          ...base,
+          id: `${target.id}-ebay-candidate-${stableHash(`${row.title}|${row.price}|${row.end}`)}`,
+          status: "待核验/eBay搜索结果",
+          verificationIssues,
+          searchUrl: url,
+        });
+      } else {
+        verified.push({
+          ...base,
+          id: `${target.id}-${sourceListingId.replace(":", "-")}`,
+          status: "实时/eBay商品页",
+        });
+      }
     });
+  return { verified, candidates };
 }
 
 async function getEbayToken() {
@@ -495,6 +519,7 @@ async function collectEbayApi(targets) {
   const token = await getEbayToken();
   if (!token) return null;
   const rows = [];
+  const candidates = [];
   const errors = [];
   let queryCount = 0;
   for (const target of targets) {
@@ -516,20 +541,18 @@ async function collectEbayApi(targets) {
         const listingId = String(item.legacyItemId || item.itemId || "").match(/\d{9,15}/)?.[0];
         const price = item.currentBidPrice || item.price;
         const currentBidCny = amountToCny(price?.value, price?.currency);
-        if (
-          !listingId ||
-          !item.itemWebUrl ||
-          !item.image?.imageUrl ||
-          currentBidCny < minPsa10PriceCny ||
-          !titleMatchesTarget(item.title || "", target)
-        ) {
+        if (currentBidCny < minPsa10PriceCny || !titleMatchesTarget(item.title || "", target)) {
           continue;
         }
         const checkedAt = new Date().toISOString();
-        rows.push({
+        const verificationIssues = [
+          !listingId && "缺少商品 ID",
+          !item.itemWebUrl && "缺少商品直达链接",
+          !item.image?.imageUrl && "缺少原图",
+        ].filter(Boolean);
+        const base = {
           ...target,
-          id: `${target.id}-ebay-${listingId}`,
-          sourceListingId: `ebay:${listingId}`,
+          sourceListingId: listingId ? `ebay:${listingId}` : null,
           psaCert: "PSA 10",
           platform: "eBay",
           currentBidCny,
@@ -545,20 +568,34 @@ async function collectEbayApi(targets) {
           shippingFrom: [item.itemLocation?.city, item.itemLocation?.stateOrProvince, item.itemLocation?.country]
             .filter(Boolean)
             .join(", ") || null,
-          status: "实时/eBay Browse API",
-          url: item.itemWebUrl,
-          imageUrl: item.image.imageUrl,
+          url: item.itemWebUrl || ebaySearchUrl(target.query),
+          imageUrl: item.image?.imageUrl || "",
           sourceTitle: item.title,
           sourcePriceText: `${price.currency} ${price.value}`,
           sourceEndText: "",
           lastCapturedAt: checkedAt,
-        });
+        };
+        if (verificationIssues.length) {
+          candidates.push({
+            ...base,
+            id: `${target.id}-ebay-api-candidate-${stableHash(`${item.title}|${price.currency}|${price.value}`)}`,
+            status: "待核验/eBay Browse API",
+            verificationIssues,
+            searchUrl: ebaySearchUrl(target.query),
+          });
+        } else {
+          rows.push({
+            ...base,
+            id: `${target.id}-ebay-${listingId}`,
+            status: "实时/eBay Browse API",
+          });
+        }
       }
     } catch (error) {
       errors.push({ targetId: target.id, message: error.message });
     }
   }
-  return { rows, errors, queryCount, mode: "api" };
+  return { rows, candidates, errors, queryCount, mode: "api" };
 }
 
 function unavailableSourceStatuses(checkedAt) {
@@ -588,12 +625,14 @@ async function main() {
     }));
   const previousPayload = await fs.readFile(outputPath, "utf8").then(JSON.parse).catch(() => ({ auctions: [] }));
   const auctions = [];
+  const candidates = [];
   const ebayErrors = [];
   let ebayQueriesCompleted = 0;
   let ebayMode = "browser";
   const ebayApi = await collectEbayApi(targets);
   if (ebayApi) {
     auctions.push(...ebayApi.rows);
+    candidates.push(...ebayApi.candidates);
     ebayErrors.push(...ebayApi.errors);
     ebayQueriesCompleted = ebayApi.queryCount;
     ebayMode = ebayApi.mode;
@@ -602,8 +641,9 @@ async function main() {
     const page = await browser.newPage({ viewport: { width: 1440, height: 1100 } });
     for (const target of targets) {
       try {
-        const ebayRows = await scrapeEbay(page, target);
-        auctions.push(...ebayRows);
+        const ebayResult = await scrapeEbay(page, target);
+        auctions.push(...ebayResult.verified);
+        candidates.push(...ebayResult.candidates);
         ebayQueriesCompleted += 1;
       } catch (error) {
         ebayErrors.push({ targetId: target.id, message: error.message });
@@ -618,8 +658,8 @@ async function main() {
     expectedSaleCny,
   });
   auctions.push(...snkrdunk.rows);
-  if (auctions.length === 0) {
-    throw new Error(`No verified listings collected; preserving previous snapshot. eBay errors: ${ebayErrors.length}`);
+  if (auctions.length === 0 && candidates.length === 0) {
+    throw new Error(`No listings collected; preserving previous snapshot. eBay errors: ${ebayErrors.length}`);
   }
 
   const previousByListing = new Map(
@@ -655,6 +695,7 @@ async function main() {
         connected: ebayQueriesCompleted > 0,
         checkedAt: new Date().toISOString(),
         count: enrichedAuctions.filter((row) => row.platform === "eBay").length,
+        candidateCount: candidates.length,
         mode: ebayMode,
         queryCount: ebayQueriesCompleted,
         errorCount: ebayErrors.length,
@@ -665,6 +706,7 @@ async function main() {
     ],
     minOpportunityRoi,
     auctions: enrichedAuctions,
+    candidates,
     opportunities,
     watchlist: sample.watchlist,
   };
