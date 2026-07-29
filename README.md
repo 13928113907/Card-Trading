@@ -30,6 +30,14 @@ The default deployment domain is `card-trading-api.47-82-148-17.sslip.io`, which
 
 Authenticated browser states live only in `secrets/browser-state/*.json`. Docker mounts this directory read-only at `/app/secrets/browser-state`; it is excluded from Git and the Docker build context.
 
+The persistent server Chromium desktop binds only to the server loopback interface. Open an SSH tunnel from the Mac before visiting it:
+
+```bash
+ssh -i ~/.ssh/codex_sever -N -L 33000:127.0.0.1:3000 admin@47.82.148.17
+```
+
+Then open `http://127.0.0.1:33000`. Its profile is stored in the ignored `secrets/session-browser` directory and is never exposed by Caddy.
+
 The live response contains verified rows only. Platforms that require a logged-in App or browser session appear under `sources` as disconnected and are not emitted as fake zero-price listings.
 
 For reliable eBay data, set `EBAY_CLIENT_ID` and `EBAY_CLIENT_SECRET` from an eBay Developer application. The collector then uses the official Browse API for stable listing IDs, direct URLs, original images, current auction prices, end times, and item locations. Browser collection remains a strict fallback and rejects rows without a listing ID, image, and direct item URL.

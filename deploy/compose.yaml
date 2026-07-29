@@ -40,6 +40,23 @@ services:
       - caddy_data:/data
       - caddy_config:/config
 
+  session-browser:
+    image: lscr.io/linuxserver/chromium:latest
+    restart: unless-stopped
+    security_opt:
+      - seccomp=unconfined
+    environment:
+      PUID: "${SESSION_BROWSER_PUID:-1000}"
+      PGID: "${SESSION_BROWSER_PGID:-1000}"
+      TZ: "Asia/Shanghai"
+      CHROME_CLI: "--no-first-run --disable-dev-shm-usage"
+    ports:
+      - "127.0.0.1:3000:3000"
+      - "127.0.0.1:3001:3001"
+    volumes:
+      - ../secrets/session-browser:/config
+    shm_size: "1gb"
+
 volumes:
   collector_runtime:
   caddy_data:
