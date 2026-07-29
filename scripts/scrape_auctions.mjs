@@ -623,7 +623,7 @@ async function main() {
       sourceUrl: card.sourceUrl,
       priceConfidence: card.confidence,
     }));
-  const previousPayload = await fs.readFile(outputPath, "utf8").then(JSON.parse).catch(() => ({ auctions: [] }));
+  const previousPayload = await fs.readFile(outputPath, "utf8").then(JSON.parse).catch(() => ({ auctions: [], candidates: [] }));
   const auctions = [];
   const candidates = [];
   const ebayErrors = [];
@@ -659,7 +659,34 @@ async function main() {
   });
   auctions.push(...snkrdunk.rows);
   if (auctions.length === 0 && candidates.length === 0) {
-    throw new Error(`No listings collected; preserving previous snapshot. eBay errors: ${ebayErrors.length}`);
+    const hasPreviousSnapshot =
+      (previousPayload.auctions || []).length > 0 || (previousPayload.candidates || []).length > 0;
+    if (!hasPreviousSnapshot) {
+      throw new Error(`No listings collected and no previous snapshot is available. eBay errors: ${ebayErrors.length}`);
+    }
+    const lastAttemptAt = new Date().toISOString();
+    const message = `本轮未获取到新商品，已保留上一份数据（eBay ${ebayErrors.length} 个检索失败）`;
+    const preservedPayload = {
+      ...previousPayload,
+      mode: "live",
+      dataStale: true,
+      lastAttemptAt,
+      lastAttemptMessage: message,
+      sources: (previousPayload.sources || []).map((source) =>
+        source.id === "ebay"
+          ? {
+              ...source,
+              connected: false,
+              checkedAt: lastAttemptAt,
+              errorCount: ebayErrors.length,
+              message,
+            }
+          : source
+      ),
+    };
+    await fs.writeFile(outputPath, JSON.stringify(preservedPayload, null, 2));
+    console.log(JSON.stringify({ preserved: true, message, outputPath }));
+    return;
   }
 
   const previousByListing = new Map(
@@ -683,8 +710,12 @@ async function main() {
     .filter((row) => row.currentBidCny > 0 && row.roi >= minOpportunityRoi)
     .sort((a, b) => b.actualProfitCny - a.actualProfitCny);
 
+  const lastUpdatedAt = new Date().toISOString();
   const payload = {
-    lastUpdatedAt: new Date().toISOString(),
+    lastUpdatedAt,
+    lastAttemptAt: lastUpdatedAt,
+    lastAttemptMessage: "",
+    dataStale: false,
     source: "server-browser-monitor",
     mode: "live",
     snapshotIntervalSeconds: 300,
@@ -714,7 +745,7 @@ async function main() {
   if (process.env.WRITE_DOCS_SNAPSHOT === "1") {
     await fs.writeFile(docsOutputPath, JSON.stringify(payload, null, 2));
   }
-  console.log(outputPath);
+  console.log(JSON.stringify({ preserved: false, message: "抓取完成", outputPath }));
 }
 
 main().catch((error) => {

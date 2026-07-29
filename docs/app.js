@@ -669,18 +669,27 @@ async function triggerRefresh() {
   refreshButton.textContent = "读取中";
   refreshStatus.textContent = API_BASE_URL ? "服务器正在抓取各平台最新价格..." : "正在重新读取已发布的数据文件...";
   try {
+    let refreshOutcome = null;
     if (API_BASE_URL) {
       const response = await fetch(`${API_BASE_URL}/api/refresh`, {
         method: "POST",
         cache: "no-store",
       });
       const result = await response.json();
+      if (response.status === 429) {
+        await loadData();
+        const sourceTime = lastUpdatedAt ? dateTime.format(new Date(lastUpdatedAt)) : "--";
+        refreshStatus.textContent = `${result.message} · 当前显示 ${sourceTime} 的数据`;
+        return;
+      }
       if (!response.ok || !result.ok) throw new Error(result.message || "服务器抓取失败");
-      await waitForRefresh(result.refreshRunId);
+      refreshOutcome = await waitForRefresh(result.refreshRunId);
     }
     await loadData();
     const sourceTime = lastUpdatedAt ? dateTime.format(new Date(lastUpdatedAt)) : "--";
-    refreshStatus.textContent = `${API_BASE_URL ? "抓取完成" : "读取成功"} ${dateTime.format(new Date())} · 数据更新 ${sourceTime}`;
+    refreshStatus.textContent = refreshOutcome?.preserved
+      ? `${refreshOutcome.message} · 当前数据 ${sourceTime}`
+      : `${API_BASE_URL ? "抓取完成" : "读取成功"} ${dateTime.format(new Date())} · 数据更新 ${sourceTime}`;
   } catch (error) {
     refreshStatus.textContent = loadErrorMessage(error);
   } finally {
@@ -703,7 +712,7 @@ async function waitForRefresh(runId) {
     if (!status.refreshResult?.ok) {
       throw new Error(status.lastRefreshError || status.refreshResult?.message || "服务器抓取失败");
     }
-    return;
+    return status.refreshResult;
   }
   throw new Error("服务器抓取超时，请稍后查看状态");
 }

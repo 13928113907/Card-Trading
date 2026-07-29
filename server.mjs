@@ -123,10 +123,18 @@ function runRefresh(reason = "scheduled") {
       refreshing = false;
       refreshCompletedAt = new Date().toISOString();
       if (code === 0) {
+        const output = stdout.trim().split("\n").at(-1) || "";
+        let scraperResult = null;
+        try {
+          scraperResult = JSON.parse(output);
+        } catch {
+          // Older collectors returned only the output path.
+        }
         refreshResult = {
           ok: true,
-          message: "refresh complete",
-          output: stdout.trim().split("\n").at(-1) || "",
+          message: scraperResult?.message || "refresh complete",
+          preserved: Boolean(scraperResult?.preserved),
+          output: scraperResult?.outputPath || output,
         };
       } else {
         lastRefreshError =
