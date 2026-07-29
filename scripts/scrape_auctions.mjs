@@ -670,6 +670,7 @@ async function main() {
     const preservedPayload = {
       ...previousPayload,
       mode: "live",
+      snapshotIntervalSeconds,
       dataStale: true,
       lastAttemptAt,
       lastAttemptMessage: message,
