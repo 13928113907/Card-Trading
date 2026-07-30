@@ -16,6 +16,9 @@ const jpyCny = Number(process.env.JPY_CNY || 0.049);
 const maxPerQuery = Number(process.env.MAX_PER_QUERY || 8);
 const minPsa10PriceCny = Number(process.env.MIN_PSA10_PRICE_CNY || 500);
 const minOpportunityRoi = Number(process.env.MIN_OPPORTUNITY_ROI || 0.2);
+const targetsPerRefresh = Math.max(1, Number(process.env.TARGETS_PER_REFRESH || 6));
+const navigationTimeoutMs = Math.max(5000, Number(process.env.NAVIGATION_TIMEOUT_MS || 20000));
+const captureSearchScreenshots = process.env.CAPTURE_SEARCH_SCREENSHOTS === "1";
 const snapshotIntervalSeconds = Math.round(Number(process.env.REFRESH_MS || 60000) / 1000);
 const browserStateDir = process.env.BROWSER_STATE_DIR
   ? path.resolve(process.env.BROWSER_STATE_DIR)
@@ -425,10 +428,12 @@ async function newPlatformContext(browser, platform) {
 
 async function scrapeEbay(page, target) {
   const url = ebaySearchUrl(target.query);
-  await page.goto(url, { waitUntil: "domcontentloaded", timeout: 45000 });
-  await page.waitForTimeout(2500);
+  await page.goto(url, { waitUntil: "domcontentloaded", timeout: navigationTimeoutMs });
+  await page.waitForTimeout(750);
   const capturePath = path.join(captureDir, `ebay-${slug(target.query)}.png`);
-  await page.screenshot({ path: capturePath, fullPage: true });
+  if (captureSearchScreenshots) {
+    await page.screenshot({ path: capturePath, fullPage: false });
+  }
   let rows = await page.$$eval(".s-item, .s-card, [data-testid='item-card']", (items) =>
     items.slice(0, 10).map((item) => ({
       title:
@@ -508,7 +513,7 @@ async function scrapeEbay(page, target) {
         sourceTitle: row.title,
         sourcePriceText: row.price,
         sourceEndText: row.end,
-        screenshot: `/captures/${path.basename(capturePath)}`,
+        screenshot: captureSearchScreenshots ? `/captures/${path.basename(capturePath)}` : null,
         lastCapturedAt: capturedAt.toISOString(),
       };
       if (verificationIssues.length) {
@@ -645,7 +650,7 @@ async function main() {
   await fs.mkdir(captureDir, { recursive: true });
   const sample = JSON.parse(await fs.readFile(samplePath, "utf8"));
   const market = JSON.parse(await fs.readFile(marketPath, "utf8"));
-  const targets = market.cards
+  const allTargets = market.cards
     .filter((card) => targetOverrides[card.id] && card.currentUsd > 0)
     .map((card) => ({
       ...targetOverrides[card.id],
@@ -656,6 +661,13 @@ async function main() {
       sourceUrl: card.sourceUrl,
       priceConfidence: card.confidence,
     }));
+  const batchCount = Math.max(1, Math.ceil(allTargets.length / targetsPerRefresh));
+  const refreshRunId = Math.max(1, Number(process.env.REFRESH_RUN_ID || 1));
+  const batchIndex = (refreshRunId - 1) % batchCount;
+  const targets = allTargets.slice(
+    batchIndex * targetsPerRefresh,
+    (batchIndex + 1) * targetsPerRefresh
+  );
   const previousPayload = await fs.readFile(outputPath, "utf8").then(JSON.parse).catch(() => ({ auctions: [], candidates: [] }));
   const auctions = [];
   const candidates = [];
@@ -676,6 +688,12 @@ async function main() {
       ? browser.contexts()[0]
       : await newPlatformContext(browser, "ebay");
     const page = await context.newPage();
+    await page.route("**/*", (route) => {
+      const resourceType = route.request().resourceType();
+      return ["image", "media", "font"].includes(resourceType)
+        ? route.abort()
+        : route.continue();
+    });
     for (const target of targets) {
       try {
         const ebayResult = await scrapeEbay(page, target);
@@ -699,6 +717,25 @@ async function main() {
     expectedSaleCny,
   });
   auctions.push(...snkrdunk.rows);
+  const refreshedTargetIds = new Set(targets.map((target) => target.id));
+  const failedEbayTargetIds = new Set(ebayErrors.map((error) => error.targetId));
+  const refreshedTargetIdFor = (row) =>
+    [...refreshedTargetIds].find((targetId) =>
+      row.id === targetId || String(row.id || "").startsWith(`${targetId}-`)
+    );
+  const shouldRetainPrevious = (row) => {
+    const targetId = refreshedTargetIdFor(row);
+    if (!targetId) return true;
+    if (row.platform === "eBay") return failedEbayTargetIds.has(targetId);
+    if (row.platform === "SNKRDUNK") return !snkrdunk.status.connected;
+    return false;
+  };
+  auctions.push(
+    ...(previousPayload.auctions || []).filter(shouldRetainPrevious)
+  );
+  candidates.push(
+    ...(previousPayload.candidates || []).filter(shouldRetainPrevious)
+  );
   if (auctions.length === 0 && candidates.length === 0) {
     const hasPreviousSnapshot =
       (previousPayload.auctions || []).length > 0 || (previousPayload.candidates || []).length > 0;
@@ -761,6 +798,12 @@ async function main() {
     source: "server-browser-monitor",
     mode: "live",
     snapshotIntervalSeconds,
+    refreshBatch: {
+      index: batchIndex + 1,
+      count: batchCount,
+      targetCount: targets.length,
+      totalTargetCount: allTargets.length,
+    },
     sources: [
       {
         id: "ebay",

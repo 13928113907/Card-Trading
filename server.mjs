@@ -104,6 +104,7 @@ function runRefresh(reason = "scheduled") {
       cwd: root,
       env: {
         ...process.env,
+        REFRESH_RUN_ID: String(currentRunId),
         LIVE_OUTPUT_PATH: livePath,
         CAPTURE_DIR: process.env.CAPTURE_DIR || path.join(root, "web", "captures"),
       },
