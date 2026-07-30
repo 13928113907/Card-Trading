@@ -13,6 +13,29 @@ async def pipe(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> No
         writer.close()
 
 
+async def forward_initial_request(
+    reader: asyncio.StreamReader,
+    writer: asyncio.StreamWriter,
+    advertised_host: str,
+    advertised_port: int,
+) -> None:
+    try:
+        headers = await reader.readuntil(b"\r\n\r\n")
+        lines = headers.split(b"\r\n")
+        for index, line in enumerate(lines):
+            if line.lower().startswith(b"host:"):
+                lines[index] = (
+                    f"Host: {advertised_host}:{advertised_port}".encode()
+                )
+                break
+        headers = b"\r\n".join(lines)
+        writer.write(headers)
+        await writer.drain()
+        await pipe(reader, writer)
+    except (asyncio.IncompleteReadError, asyncio.LimitOverrunError):
+        writer.close()
+
+
 async def handle_client(
     client_reader: asyncio.StreamReader,
     client_writer: asyncio.StreamWriter,
@@ -26,8 +49,14 @@ async def handle_client(
     except OSError:
         client_writer.close()
         return
+    advertised_host, advertised_port = client_writer.get_extra_info("sockname")
     await asyncio.gather(
-        pipe(client_reader, target_writer),
+        forward_initial_request(
+            client_reader,
+            target_writer,
+            advertised_host,
+            advertised_port,
+        ),
         pipe(target_reader, client_writer),
     )
 
