@@ -11,7 +11,7 @@ services:
       DATA_DIR: "/app/runtime/data"
       CAPTURE_DIR: "/app/runtime/captures"
       BROWSER_STATE_DIR: "/app/secrets/browser-state"
-      SESSION_BROWSER_CDP_URL: "http://session-browser:9222"
+      SESSION_BROWSER_CDP_URL: "http://session-browser:9223"
       ALLOWED_ORIGINS: "${ALLOWED_ORIGINS}"
       EBAY_CLIENT_ID: "${EBAY_CLIENT_ID:-}"
       EBAY_CLIENT_SECRET: "${EBAY_CLIENT_SECRET:-}"
@@ -53,12 +53,29 @@ services:
       CHROME_CLI: "--no-first-run --disable-dev-shm-usage --user-data-dir=/config/.config/chromium --remote-debugging-address=0.0.0.0 --remote-debugging-port=9222"
     expose:
       - "9222"
+      - "9223"
     ports:
       - "127.0.0.1:3000:3000"
       - "127.0.0.1:3001:3001"
     volumes:
       - ../secrets/session-browser:/config
     shm_size: "1gb"
+
+  session-browser-cdp:
+    image: python:3.12-alpine
+    restart: unless-stopped
+    depends_on:
+      - session-browser
+    network_mode: "service:session-browser"
+    volumes:
+      - ../scripts/tcp_proxy.py:/tcp_proxy.py:ro
+    command:
+      - python
+      - /tcp_proxy.py
+      - 0.0.0.0
+      - "9223"
+      - 127.0.0.1
+      - "9222"
 
 volumes:
   collector_runtime:

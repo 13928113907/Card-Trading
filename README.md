@@ -38,7 +38,7 @@ ssh -i ~/.ssh/codex_sever -N -L 33000:127.0.0.1:3000 admin@47.82.148.17
 
 Then open `http://127.0.0.1:33000`. Its profile is stored in the ignored `secrets/session-browser` directory and is never exposed by Caddy.
 
-The collector connects to this authenticated Chromium over CDP on the private Docker network. Port `9222` is not published to the host or the Internet.
+The collector connects to this authenticated Chromium over CDP on the private Docker network. The loopback CDP endpoint is forwarded to internal port `9223`; neither port is published to the host or the Internet.
 
 The live response contains verified rows only. Platforms that require a logged-in App or browser session appear under `sources` as disconnected and are not emitted as fake zero-price listings.
 
