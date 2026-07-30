@@ -709,7 +709,7 @@ async function scrapeCardHobby(page, target) {
     }));
 }
 
-async function collectLoggedMarketplaces(targets) {
+async function collectLoggedMarketplaces(targets, existingBrowserSession = null) {
   const checkedAt = new Date().toISOString();
   const platforms = [
     {
@@ -726,7 +726,8 @@ async function collectLoggedMarketplaces(targets) {
   const rows = [];
   const candidates = [];
   const errors = [];
-  const browserSession = await launchBrowser();
+  const browserSession = existingBrowserSession || await launchBrowser();
+  const ownsBrowserSession = !existingBrowserSession;
   const context = browserSession.shared
     ? browserSession.browser.contexts()[0]
     : await browserSession.browser.newContext({
@@ -786,7 +787,9 @@ async function collectLoggedMarketplaces(targets) {
 
   if (!browserSession.shared) {
     await context.close();
-    await browserSession.browser.close();
+    if (ownsBrowserSession) {
+      await browserSession.browser.close();
+    }
   }
   return {
     rows,
@@ -953,6 +956,7 @@ async function main() {
   const ebayErrors = [];
   let ebayQueriesCompleted = 0;
   let ebayMode = "browser";
+  let activeBrowserSession = null;
   const ebayApi = await collectEbayApi(targets);
   if (ebayApi) {
     auctions.push(...ebayApi.rows);
@@ -962,6 +966,7 @@ async function main() {
     ebayMode = ebayApi.mode;
   } else {
     const browserSession = await launchBrowser();
+    activeBrowserSession = browserSession;
     const { browser } = browserSession;
     const context = browserSession.shared
       ? browser.contexts()[0]
@@ -986,7 +991,6 @@ async function main() {
     await page.close();
     if (!browserSession.shared) {
       await context.close();
-      await browser.close();
     }
   }
 
@@ -996,7 +1000,13 @@ async function main() {
     expectedSaleCny,
   });
   auctions.push(...snkrdunk.rows);
-  const loggedMarketplaces = await collectLoggedMarketplaces(targets);
+  const loggedMarketplaces = await collectLoggedMarketplaces(
+    targets,
+    activeBrowserSession
+  );
+  if (activeBrowserSession && !activeBrowserSession.shared) {
+    await activeBrowserSession.browser.close();
+  }
   auctions.push(...loggedMarketplaces.rows);
   candidates.push(...loggedMarketplaces.candidates);
   const refreshedTargetIds = new Set(targets.map((target) => target.id));
