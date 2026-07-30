@@ -571,8 +571,10 @@ function marketplaceListing(target, platform, row, defaults) {
     taxCny: 0,
     otherCostCny: platform === "Card Hobby" ? 10 : 30,
     holdingStartAt: capturedAt.toISOString(),
-    auctionStartAt: null,
-    auctionEndAt: parseAuctionEnd(row.end, capturedAt.getTime()),
+    auctionStartAt: row.auctionStartAt || null,
+    auctionEndAt:
+      row.auctionEndAt ||
+      parseAuctionEnd(row.end, capturedAt.getTime()),
     shippingFrom: row.shippingFrom,
     url: row.url,
     imageUrl: row.imageUrl || "",
@@ -643,6 +645,12 @@ async function scrapeFanatics(page, target) {
 }
 
 async function scrapeCardHobby(page, target) {
+  if (!new URL(page.url()).hostname.endsWith("cardhobby.com.cn")) {
+    await page.goto("https://www.cardhobby.com.cn/", {
+      waitUntil: "domcontentloaded",
+      timeout: navigationTimeoutMs,
+    });
+  }
   const queries = [target.query, target.cnName].filter(
     (query, index, values) => query && values.indexOf(query) === index
   );
@@ -650,45 +658,49 @@ async function scrapeCardHobby(page, target) {
   let searchUrl = cardHobbySearchUrl(queries[0]);
   for (const query of queries) {
     searchUrl = cardHobbySearchUrl(query);
-    await page.goto(searchUrl, {
-      waitUntil: "domcontentloaded",
-      timeout: navigationTimeoutMs,
-    });
-    await page.waitForTimeout(1800);
-    rows = await page.$$eval("a[href*='/market/item/']", (links) => {
-      const seen = new Set();
-      return links.flatMap((link) => {
-        const url = link.href;
-        if (!url || seen.has(url)) return [];
-        seen.add(url);
-        const box = link.closest(".el-card") || link.parentElement;
-        const text = (box?.innerText || link.innerText || "")
-          .replace(/\s+/g, " ")
-          .trim();
-        const image = box?.querySelector("img");
-        const listingId = new URL(url).pathname.match(/\/market\/item\/(\d+)/)?.[1];
-        const price = text.match(/[￥¥]\s*[\d,.]+/)?.[0] || "";
-        const shipping = text.match(/运费[：:]\s*[￥¥]\s*([\d,.]+)/);
-        const end =
-          text.match(/(?:(?:\d+\s*天)?\s*(?:\d+\s*(?:小时|时))?\s*)?\d+\s*分(?:钟)?\s*\d+\s*秒/)?.[0] ||
-          "";
-        const title = text.split(/[￥¥]\s*[\d,.]+/)[0]?.trim() || "";
-        return [{
-          title,
-          price,
-          end,
-          bidCount: Number(text.match(/(\d+)\s*次竞价/)?.[1] || 0),
-          shippingCny: shipping ? Number(shipping[1].replace(/,/g, "")) : null,
-          shippingFrom: "中国",
-          sourceListingId: listingId ? `cardhobby:${listingId}` : null,
-          url,
-          imageUrl:
-            image?.currentSrc ||
-            image?.src ||
-            image?.getAttribute("data-src") ||
-            "",
-        }];
+    const items = await page.evaluate(async (searchKey) => {
+      const params = new URLSearchParams({
+        pageIndex: "1",
+        pageSize: "60",
+        searchKey,
+        searchJson: JSON.stringify([{ Key: "Status", Value: 1 }]),
+        sort: "EffectiveTimeStamp",
+        sortType: "asc",
       });
+      const response = await fetch(
+        `/NewCommodity/SearchCommodity?${params.toString()}`
+      );
+      if (!response.ok) throw new Error(`Card Hobby HTTP ${response.status}`);
+      const payload = await response.json();
+      return payload?.data?.PagedMarketItemList || [];
+    }, query);
+    rows = items.map((item) => {
+      const codeDate = String(item.Code || "").match(/^(\d{2})(\d{2})(\d{2})/);
+      const auctionStartAt = codeDate
+        ? new Date(Date.UTC(
+            2000 + Number(codeDate[1]),
+            Number(codeDate[2]) - 1,
+            Number(codeDate[3])
+          )).toISOString()
+        : null;
+      const auctionEndAt = item.EffectiveDate
+        ? new Date(`${String(item.EffectiveDate).replace(" ", "T")}+08:00`).toISOString()
+        : null;
+      return {
+        title: String(item.Title || "").trim(),
+        price: `￥${item.LowestPrice || item.Price || 0}`,
+        end: String(item.EffectiveDate || ""),
+        auctionStartAt,
+        auctionEndAt,
+        bidCount: Number(item.PriceCount || item.OutCount || 0),
+        shippingCny: Number(item.NewPostageMoney || item.PostageMoney || 0),
+        shippingFrom: item.SellSource === "CN" ? "中国" : item.SellSource || "中国",
+        sourceListingId: item.ID ? `cardhobby:${item.ID}` : null,
+        url: item.ID
+          ? `https://www.cardhobby.com.cn/market/item/${item.ID}`
+          : searchUrl,
+        imageUrl: String(item.TitImg || ""),
+      };
     });
     if (rows.some((row) => titleMatchesTarget(row.title, target))) break;
   }
@@ -709,7 +721,11 @@ async function scrapeCardHobby(page, target) {
     }));
 }
 
-async function collectLoggedMarketplaces(targets, existingBrowserSession = null) {
+async function collectLoggedMarketplaces(
+  targets,
+  existingBrowserSession = null,
+  platformIds = ["fanatics", "cardhobby"]
+) {
   const checkedAt = new Date().toISOString();
   const platforms = [
     {
@@ -722,7 +738,7 @@ async function collectLoggedMarketplaces(targets, existingBrowserSession = null)
       name: "Card Hobby",
       scrape: scrapeCardHobby,
     },
-  ];
+  ].filter((platform) => platformIds.includes(platform.id));
   const rows = [];
   const candidates = [];
   const errors = [];
@@ -945,7 +961,10 @@ async function main() {
     }));
   const batchCount = Math.max(1, Math.ceil(allTargets.length / targetsPerRefresh));
   const refreshRunId = Math.max(1, Number(process.env.REFRESH_RUN_ID || 1));
-  const batchIndex = (refreshRunId - 1) % batchCount;
+  const sourceRotation = ["ebay", "fanatics", "cardhobby"];
+  const activeSourceId = sourceRotation[(refreshRunId - 1) % sourceRotation.length];
+  const batchIndex =
+    Math.floor((refreshRunId - 1) / sourceRotation.length) % batchCount;
   const targets = allTargets.slice(
     batchIndex * targetsPerRefresh,
     (batchIndex + 1) * targetsPerRefresh
@@ -957,40 +976,42 @@ async function main() {
   let ebayQueriesCompleted = 0;
   let ebayMode = "browser";
   let activeBrowserSession = null;
-  const ebayApi = await collectEbayApi(targets);
-  if (ebayApi) {
-    auctions.push(...ebayApi.rows);
-    candidates.push(...ebayApi.candidates);
-    ebayErrors.push(...ebayApi.errors);
-    ebayQueriesCompleted = ebayApi.queryCount;
-    ebayMode = ebayApi.mode;
-  } else {
-    const browserSession = await launchBrowser();
-    activeBrowserSession = browserSession;
-    const { browser } = browserSession;
-    const context = browserSession.shared
-      ? browser.contexts()[0]
-      : await newPlatformContext(browser, "ebay");
-    const page = await context.newPage();
-    await page.route("**/*", (route) => {
-      const resourceType = route.request().resourceType();
-      return ["image", "media", "font"].includes(resourceType)
-        ? route.abort()
-        : route.continue();
-    });
-    for (const target of targets) {
-      try {
-        const ebayResult = await scrapeEbay(page, target);
-        auctions.push(...ebayResult.verified);
-        candidates.push(...ebayResult.candidates);
-        ebayQueriesCompleted += 1;
-      } catch (error) {
-        ebayErrors.push({ targetId: target.id, message: error.message });
+  if (activeSourceId === "ebay") {
+    const ebayApi = await collectEbayApi(targets);
+    if (ebayApi) {
+      auctions.push(...ebayApi.rows);
+      candidates.push(...ebayApi.candidates);
+      ebayErrors.push(...ebayApi.errors);
+      ebayQueriesCompleted = ebayApi.queryCount;
+      ebayMode = ebayApi.mode;
+    } else {
+      const browserSession = await launchBrowser();
+      activeBrowserSession = browserSession;
+      const { browser } = browserSession;
+      const context = browserSession.shared
+        ? browser.contexts()[0]
+        : await newPlatformContext(browser, "ebay");
+      const page = await context.newPage();
+      await page.route("**/*", (route) => {
+        const resourceType = route.request().resourceType();
+        return ["image", "media", "font"].includes(resourceType)
+          ? route.abort()
+          : route.continue();
+      });
+      for (const target of targets) {
+        try {
+          const ebayResult = await scrapeEbay(page, target);
+          auctions.push(...ebayResult.verified);
+          candidates.push(...ebayResult.candidates);
+          ebayQueriesCompleted += 1;
+        } catch (error) {
+          ebayErrors.push({ targetId: target.id, message: error.message });
+        }
       }
-    }
-    await page.close();
-    if (!browserSession.shared) {
-      await context.close();
+      await page.close();
+      if (!browserSession.shared) {
+        await context.close();
+      }
     }
   }
 
@@ -1000,10 +1021,13 @@ async function main() {
     expectedSaleCny,
   });
   auctions.push(...snkrdunk.rows);
-  const loggedMarketplaces = await collectLoggedMarketplaces(
-    targets,
-    activeBrowserSession
-  );
+  const loggedMarketplaces = ["fanatics", "cardhobby"].includes(activeSourceId)
+    ? await collectLoggedMarketplaces(
+        targets,
+        activeBrowserSession,
+        [activeSourceId]
+      )
+    : { rows: [], candidates: [], errors: [], statuses: [] };
   if (activeBrowserSession && !activeBrowserSession.shared) {
     await activeBrowserSession.browser.close();
   }
@@ -1023,13 +1047,17 @@ async function main() {
   const shouldRetainPrevious = (row) => {
     const targetId = refreshedTargetIdFor(row);
     if (!targetId) return true;
-    if (row.platform === "eBay") return failedEbayTargetIds.has(targetId);
+    if (row.platform === "eBay") {
+      return activeSourceId !== "ebay" || failedEbayTargetIds.has(targetId);
+    }
     if (row.platform === "SNKRDUNK") return !snkrdunk.status.connected;
     if (row.platform === "Fanatics Collect") {
-      return failedLoggedTargets.has(`fanatics:${targetId}`);
+      return activeSourceId !== "fanatics" ||
+        failedLoggedTargets.has(`fanatics:${targetId}`);
     }
     if (row.platform === "Card Hobby") {
-      return failedLoggedTargets.has(`cardhobby:${targetId}`);
+      return activeSourceId !== "cardhobby" ||
+        failedLoggedTargets.has(`cardhobby:${targetId}`);
     }
     return false;
   };
@@ -1093,6 +1121,41 @@ async function main() {
     .sort((a, b) => b.actualProfitCny - a.actualProfitCny);
 
   const lastUpdatedAt = new Date().toISOString();
+  const previousSource = (id) =>
+    (previousPayload.sources || []).find((source) => source.id === id);
+  const loggedSource = (id, name) =>
+    loggedMarketplaces.statuses.find((source) => source.id === id) ||
+    previousSource(id) || {
+      id,
+      name,
+      connected: false,
+      checkedAt: null,
+      count: 0,
+      candidateCount: 0,
+      message: "等待轮询",
+    };
+  const ebaySource = activeSourceId === "ebay"
+    ? {
+        id: "ebay",
+        name: "eBay",
+        connected: ebayQueriesCompleted > 0,
+        checkedAt: new Date().toISOString(),
+        count: enrichedAuctions.filter((row) => row.platform === "eBay").length,
+        candidateCount: candidates.filter((row) => row.platform === "eBay").length,
+        mode: ebayMode,
+        queryCount: ebayQueriesCompleted,
+        errorCount: ebayErrors.length,
+        message: ebayErrors.length ? `${ebayErrors.length} 个检索失败` : "抓取完成",
+      }
+    : previousSource("ebay") || {
+        id: "ebay",
+        name: "eBay",
+        connected: false,
+        checkedAt: null,
+        count: 0,
+        candidateCount: 0,
+        message: "等待轮询",
+      };
   const payload = {
     lastUpdatedAt,
     lastAttemptAt: lastUpdatedAt,
@@ -1106,22 +1169,13 @@ async function main() {
       count: batchCount,
       targetCount: targets.length,
       totalTargetCount: allTargets.length,
+      activeSourceId,
     },
     sources: [
-      {
-        id: "ebay",
-        name: "eBay",
-        connected: ebayQueriesCompleted > 0,
-        checkedAt: new Date().toISOString(),
-        count: enrichedAuctions.filter((row) => row.platform === "eBay").length,
-        candidateCount: candidates.filter((row) => row.platform === "eBay").length,
-        mode: ebayMode,
-        queryCount: ebayQueriesCompleted,
-        errorCount: ebayErrors.length,
-        message: ebayErrors.length ? `${ebayErrors.length} 个检索失败` : "抓取完成",
-      },
+      ebaySource,
       snkrdunk.status,
-      ...loggedMarketplaces.statuses,
+      loggedSource("fanatics", "Fanatics Collect"),
+      loggedSource("cardhobby", "Card Hobby"),
       ...unavailableSourceStatuses(new Date().toISOString()),
     ],
     minOpportunityRoi,
