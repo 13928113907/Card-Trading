@@ -333,7 +333,7 @@ function expectedSaleCny(target) {
 function parsePriceToCny(text) {
   if (!text) return 0;
   const cleaned = text.replace(/,/g, "");
-  const match = cleaned.match(/(?:US\s*)?\$([\d.]+)|(?:JPY|JP¥)\s*([\d.]+)|¥\s*([\d.]+)|CNY\s*([\d.]+)|NT\$?\s*([\d.]+)|NTS\s*([\d.]+)/i);
+  const match = cleaned.match(/(?:US\s*)?\$([\d.]+)|(?:JPY|JP¥)\s*([\d.]+)|[¥￥]\s*([\d.]+)|CNY\s*([\d.]+)|NT\$?\s*([\d.]+)|NTS\s*([\d.]+)/i);
   if (!match) return 0;
   if (match[1]) return Math.round(Number(match[1]) * usdCny);
   if (match[2]) return Math.round(Number(match[2]) * jpyCny);
@@ -354,7 +354,7 @@ function parseAuctionEnd(text, capturedAt = Date.now()) {
   const value = String(text || "").toLowerCase();
   if (!value) return null;
   const days = Number(value.match(/(\d+)\s*(?:d|day|days|天)/)?.[1] || 0);
-  const hours = Number(value.match(/(\d+)\s*(?:h|hr|hrs|hour|hours|小时)/)?.[1] || 0);
+  const hours = Number(value.match(/(\d+)\s*(?:h|hr|hrs|hour|hours|小时|时)/)?.[1] || 0);
   const minutes = Number(value.match(/(\d+)\s*(?:m|min|mins|minute|minutes|分)/)?.[1] || 0);
   const durationMs = ((days * 24 + hours) * 60 + minutes) * 60000;
   return durationMs > 0 ? new Date(capturedAt + durationMs).toISOString() : null;
@@ -535,6 +535,288 @@ async function scrapeEbay(page, target) {
   return { verified, candidates };
 }
 
+function fanaticsSearchUrl(query) {
+  const url = new URL("https://www.fanaticscollect.com/marketplace");
+  url.searchParams.set("type", "WEEKLY");
+  url.searchParams.set("q", query);
+  return url.toString();
+}
+
+function cardHobbyKeyword(query) {
+  return [...query].map((char) => {
+    if (/[A-Za-z0-9@*_+\-./]/.test(char)) return char;
+    const code = char.charCodeAt(0);
+    return code < 256
+      ? `%${code.toString(16).toUpperCase().padStart(2, "0")}`
+      : `%u${code.toString(16).toUpperCase().padStart(4, "0")}`;
+  }).join("");
+}
+
+function cardHobbySearchUrl(query) {
+  return `https://www.cardhobby.com.cn/market/search?keyword=${cardHobbyKeyword(query)}&searchtype=1`;
+}
+
+function marketplaceListing(target, platform, row, defaults) {
+  const capturedAt = new Date();
+  return {
+    ...target,
+    sourceListingId: row.sourceListingId,
+    psaCert: "PSA 10",
+    platform,
+    currentBidCny: parsePriceToCny(row.price),
+    expectedSaleCny: expectedSaleCny(target),
+    feeRate: defaults.feeRate,
+    paymentFeeRate: defaults.paymentFeeRate,
+    shippingCny: row.shippingCny ?? defaults.shippingCny,
+    taxCny: 0,
+    otherCostCny: platform === "Card Hobby" ? 10 : 30,
+    holdingStartAt: capturedAt.toISOString(),
+    auctionStartAt: null,
+    auctionEndAt: parseAuctionEnd(row.end, capturedAt.getTime()),
+    shippingFrom: row.shippingFrom,
+    url: row.url,
+    imageUrl: row.imageUrl || "",
+    sourceTitle: row.title,
+    sourcePriceText: row.price,
+    sourceEndText: row.end,
+    bidCount: row.bidCount || null,
+    lastCapturedAt: capturedAt.toISOString(),
+  };
+}
+
+async function scrapeFanatics(page, target) {
+  const searchUrl = fanaticsSearchUrl(target.query);
+  await page.goto(searchUrl, {
+    waitUntil: "domcontentloaded",
+    timeout: navigationTimeoutMs,
+  });
+  await page.waitForTimeout(3000);
+  const rows = await page.$$eval("a[href*='/weekly/']", (links) => {
+    const seen = new Set();
+    return links.flatMap((link) => {
+      const url = link.href;
+      if (!url || seen.has(url)) return [];
+      seen.add(url);
+      let box = link;
+      for (let depth = 0; depth < 8 && box.parentElement; depth += 1) {
+        box = box.parentElement;
+        const text = box.innerText || "";
+        if (/\$[\d,]+/.test(text) && /\d+\s*bids?/i.test(text)) break;
+      }
+      const text = (box.innerText || "").replace(/\s+/g, " ").trim();
+      const image = box.querySelector("img");
+      const listingId = new URL(url).pathname.split("/")[2] || "";
+      return [{
+        title: (link.textContent || "").replace(/\s+/g, " ").trim(),
+        price: text.match(/\$[\d,.]+/)?.[0] || "",
+        end: text.match(/\d+\s*d(?:ays?)?\s*\d+\s*h(?:ours?)?(?:\s*\d+\s*m(?:in(?:ute)?s?)?)?/i)?.[0] || "",
+        bidCount: Number(text.match(/(\d+)\s*bids?/i)?.[1] || 0),
+        sourceListingId: listingId ? `fanatics:${listingId}` : null,
+        url,
+        imageUrl:
+          image?.currentSrc ||
+          image?.src ||
+          image?.getAttribute("data-src") ||
+          "",
+      }];
+    });
+  });
+  return rows
+    .filter((row) =>
+      titleMatchesTarget(row.title, target) &&
+      parsePriceToCny(row.price) >= minPsa10PriceCny
+    )
+    .slice(0, maxPerQuery)
+    .map((row) => ({
+      ...marketplaceListing(
+        target,
+        "Fanatics Collect",
+        {
+          ...row,
+          shippingCny: platformDefaults["Fanatics Collect"].shippingCny,
+          shippingFrom: "美国 / Fanatics Collect Vault",
+        },
+        platformDefaults["Fanatics Collect"]
+      ),
+      searchUrl,
+    }));
+}
+
+async function scrapeCardHobby(page, target) {
+  const queries = [target.query, target.cnName].filter(
+    (query, index, values) => query && values.indexOf(query) === index
+  );
+  let rows = [];
+  let searchUrl = cardHobbySearchUrl(queries[0]);
+  for (const query of queries) {
+    searchUrl = cardHobbySearchUrl(query);
+    await page.goto(searchUrl, {
+      waitUntil: "domcontentloaded",
+      timeout: navigationTimeoutMs,
+    });
+    await page.waitForTimeout(1800);
+    rows = await page.$$eval("a[href*='/market/item/']", (links) => {
+      const seen = new Set();
+      return links.flatMap((link) => {
+        const url = link.href;
+        if (!url || seen.has(url)) return [];
+        seen.add(url);
+        const box = link.closest(".el-card") || link.parentElement;
+        const text = (box?.innerText || link.innerText || "")
+          .replace(/\s+/g, " ")
+          .trim();
+        const image = box?.querySelector("img");
+        const listingId = new URL(url).pathname.match(/\/market\/item\/(\d+)/)?.[1];
+        const price = text.match(/[￥¥]\s*[\d,.]+/)?.[0] || "";
+        const shipping = text.match(/运费[：:]\s*[￥¥]\s*([\d,.]+)/);
+        const end =
+          text.match(/(?:(?:\d+\s*天)?\s*(?:\d+\s*(?:小时|时))?\s*)?\d+\s*分(?:钟)?\s*\d+\s*秒/)?.[0] ||
+          "";
+        const title = text.split(/[￥¥]\s*[\d,.]+/)[0]?.trim() || "";
+        return [{
+          title,
+          price,
+          end,
+          bidCount: Number(text.match(/(\d+)\s*次竞价/)?.[1] || 0),
+          shippingCny: shipping ? Number(shipping[1].replace(/,/g, "")) : null,
+          shippingFrom: "中国",
+          sourceListingId: listingId ? `cardhobby:${listingId}` : null,
+          url,
+          imageUrl:
+            image?.currentSrc ||
+            image?.src ||
+            image?.getAttribute("data-src") ||
+            "",
+        }];
+      });
+    });
+    if (rows.some((row) => titleMatchesTarget(row.title, target))) break;
+  }
+  return rows
+    .filter((row) =>
+      titleMatchesTarget(row.title, target) &&
+      parsePriceToCny(row.price) >= minPsa10PriceCny
+    )
+    .slice(0, maxPerQuery)
+    .map((row) => ({
+      ...marketplaceListing(
+        target,
+        "Card Hobby",
+        row,
+        platformDefaults["Card Hobby"]
+      ),
+      searchUrl,
+    }));
+}
+
+async function collectLoggedMarketplaces(targets) {
+  const checkedAt = new Date().toISOString();
+  const platforms = [
+    {
+      id: "fanatics",
+      name: "Fanatics Collect",
+      scrape: scrapeFanatics,
+    },
+    {
+      id: "cardhobby",
+      name: "Card Hobby",
+      scrape: scrapeCardHobby,
+    },
+  ];
+  const rows = [];
+  const candidates = [];
+  const errors = [];
+  const browserSession = await launchBrowser();
+  const context = browserSession.shared
+    ? browserSession.browser.contexts()[0]
+    : await browserSession.browser.newContext({
+        viewport: { width: 1440, height: 1100 },
+      });
+
+  for (const platform of platforms) {
+    const page = await context.newPage();
+    await page.route("**/*", (route) => {
+      const resourceType = route.request().resourceType();
+      return ["image", "media", "font"].includes(resourceType)
+        ? route.abort()
+        : route.continue();
+    });
+    let completed = 0;
+    for (const target of targets) {
+      try {
+        const listings = await platform.scrape(page, target);
+        for (const listing of listings) {
+          const verificationIssues = [
+            !listing.sourceListingId && "缺少商品 ID",
+            !listing.url && "缺少商品直达链接",
+            !listing.imageUrl && "缺少原图",
+            !listing.auctionEndAt && "缺少竞价结束时间",
+            !listing.auctionStartAt && "缺少竞价开始时间",
+          ].filter(Boolean);
+          const listingId =
+            listing.sourceListingId?.split(":").at(-1) ||
+            stableHash(`${listing.sourceTitle}|${listing.currentBidCny}`);
+          if (verificationIssues.length) {
+            candidates.push({
+              ...listing,
+              id: `${target.id}-${platform.id}-candidate-${listingId}`,
+              status: `待核验/${platform.name}登录页面`,
+              verificationIssues,
+            });
+          } else {
+            rows.push({
+              ...listing,
+              id: `${target.id}-${platform.id}-${listingId}`,
+              status: `实时/${platform.name}登录页面`,
+            });
+          }
+        }
+        completed += 1;
+      } catch (error) {
+        errors.push({
+          platformId: platform.id,
+          targetId: target.id,
+          message: error.message,
+        });
+      }
+    }
+    await page.close().catch(() => {});
+    platform.completed = completed;
+  }
+
+  if (!browserSession.shared) {
+    await context.close();
+    await browserSession.browser.close();
+  }
+  return {
+    rows,
+    candidates,
+    errors,
+    statuses: platforms.map((platform) => {
+      const platformRows = rows.filter((row) => row.platform === platform.name);
+      const platformCandidates = candidates.filter(
+        (row) => row.platform === platform.name
+      );
+      const platformErrors = errors.filter(
+        (error) => error.platformId === platform.id
+      );
+      return {
+        id: platform.id,
+        name: platform.name,
+        connected: platform.completed > 0,
+        checkedAt,
+        count: platformRows.length,
+        candidateCount: platformCandidates.length,
+        queryCount: platform.completed,
+        errorCount: platformErrors.length,
+        message: platformErrors.length
+          ? `${platformErrors.length} 个检索失败`
+          : "登录页面抓取完成",
+      };
+    }),
+  };
+}
+
 async function getEbayToken() {
   if (!process.env.EBAY_CLIENT_ID || !process.env.EBAY_CLIENT_SECRET) return null;
   const credentials = Buffer.from(`${process.env.EBAY_CLIENT_ID}:${process.env.EBAY_CLIENT_SECRET}`).toString("base64");
@@ -639,9 +921,6 @@ async function collectEbayApi(targets) {
 function unavailableSourceStatuses(checkedAt) {
   return [
     ["alt", "ALT", "需要已登录的数据接口"],
-    ["cardhobby", "Card Hobby", "需要已登录的网页采集器"],
-    ["fanatics", "Fanatics Collect", "需要已登录的数据接口"],
-    ["pokecolor", "PokeColor", "需要已登录的网页或 App 采集器"],
   ].map(([id, name, message]) => ({ id, name, connected: false, checkedAt, count: 0, message }));
 }
 
@@ -717,8 +996,16 @@ async function main() {
     expectedSaleCny,
   });
   auctions.push(...snkrdunk.rows);
+  const loggedMarketplaces = await collectLoggedMarketplaces(targets);
+  auctions.push(...loggedMarketplaces.rows);
+  candidates.push(...loggedMarketplaces.candidates);
   const refreshedTargetIds = new Set(targets.map((target) => target.id));
   const failedEbayTargetIds = new Set(ebayErrors.map((error) => error.targetId));
+  const failedLoggedTargets = new Set(
+    loggedMarketplaces.errors.map(
+      (error) => `${error.platformId}:${error.targetId}`
+    )
+  );
   const refreshedTargetIdFor = (row) =>
     [...refreshedTargetIds].find((targetId) =>
       row.id === targetId || String(row.id || "").startsWith(`${targetId}-`)
@@ -728,6 +1015,12 @@ async function main() {
     if (!targetId) return true;
     if (row.platform === "eBay") return failedEbayTargetIds.has(targetId);
     if (row.platform === "SNKRDUNK") return !snkrdunk.status.connected;
+    if (row.platform === "Fanatics Collect") {
+      return failedLoggedTargets.has(`fanatics:${targetId}`);
+    }
+    if (row.platform === "Card Hobby") {
+      return failedLoggedTargets.has(`cardhobby:${targetId}`);
+    }
     return false;
   };
   auctions.push(
@@ -811,13 +1104,14 @@ async function main() {
         connected: ebayQueriesCompleted > 0,
         checkedAt: new Date().toISOString(),
         count: enrichedAuctions.filter((row) => row.platform === "eBay").length,
-        candidateCount: candidates.length,
+        candidateCount: candidates.filter((row) => row.platform === "eBay").length,
         mode: ebayMode,
         queryCount: ebayQueriesCompleted,
         errorCount: ebayErrors.length,
         message: ebayErrors.length ? `${ebayErrors.length} 个检索失败` : "抓取完成",
       },
       snkrdunk.status,
+      ...loggedMarketplaces.statuses,
       ...unavailableSourceStatuses(new Date().toISOString()),
     ],
     minOpportunityRoi,
