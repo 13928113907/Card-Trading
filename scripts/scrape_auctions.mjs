@@ -833,7 +833,11 @@ async function main() {
   console.log(JSON.stringify({ preserved: false, message: "抓取完成", outputPath }));
 }
 
-main().catch((error) => {
-  console.error(error);
-  process.exit(1);
-});
+main()
+  .then(() => {
+    setTimeout(() => process.exit(0), 50);
+  })
+  .catch((error) => {
+    console.error(error);
+    process.exit(1);
+  });
