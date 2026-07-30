@@ -20,6 +20,7 @@ const snapshotIntervalSeconds = Math.round(Number(process.env.REFRESH_MS || 6000
 const browserStateDir = process.env.BROWSER_STATE_DIR
   ? path.resolve(process.env.BROWSER_STATE_DIR)
   : null;
+const sessionBrowserCdpUrl = process.env.SESSION_BROWSER_CDP_URL || "";
 
 const platformDefaults = {
   eBay: { feeRate: 0.13, paymentFeeRate: 0.03, shippingCny: 140 },
@@ -387,10 +388,26 @@ function enrichFinancials(item) {
 }
 
 async function launchBrowser() {
+  if (sessionBrowserCdpUrl) {
+    try {
+      return {
+        browser: await chromium.connectOverCDP(sessionBrowserCdpUrl),
+        shared: true,
+      };
+    } catch {
+      // Fall back to the isolated collector browser while the session desktop starts.
+    }
+  }
   try {
-    return await chromium.launch({ channel: "chrome", headless: true });
+    return {
+      browser: await chromium.launch({ channel: "chrome", headless: true }),
+      shared: false,
+    };
   } catch {
-    return await chromium.launch({ headless: true });
+    return {
+      browser: await chromium.launch({ headless: true }),
+      shared: false,
+    };
   }
 }
 
@@ -653,8 +670,11 @@ async function main() {
     ebayQueriesCompleted = ebayApi.queryCount;
     ebayMode = ebayApi.mode;
   } else {
-    const browser = await launchBrowser();
-    const context = await newPlatformContext(browser, "ebay");
+    const browserSession = await launchBrowser();
+    const { browser } = browserSession;
+    const context = browserSession.shared
+      ? browser.contexts()[0]
+      : await newPlatformContext(browser, "ebay");
     const page = await context.newPage();
     for (const target of targets) {
       try {
@@ -666,8 +686,11 @@ async function main() {
         ebayErrors.push({ targetId: target.id, message: error.message });
       }
     }
-    await context.close();
-    await browser.close();
+    await page.close();
+    if (!browserSession.shared) {
+      await context.close();
+      await browser.close();
+    }
   }
 
   const snkrdunk = await collectSnkrdunk({
