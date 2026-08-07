@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="按卡名、编号或系列查询卡牌图鉴、价格来源与当前挂牌。" />
+    <title>Card Trading · 查卡平台</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <a class="brand" href="../" aria-label="Card Trading 首页">
+        <span class="brand-mark">CT</span>
+        <span><strong>Card Trading</strong><small>卡牌数据工作台</small></span>
+      </a>
+      <nav class="module-nav" aria-label="主要功能">
+        <a href="../">市场监控</a>
+        <a class="active" href="./" aria-current="page">查卡平台</a>
+      </nav>
+    </header>
+
+    <main class="shell">
+      <section class="workspace-header">
+        <div>
+          <p class="eyebrow">Card Research</p>
+          <h1>查卡与多平台价格检索</h1>
+          <p class="lead">输入卡名、编号、系列或角色，核对原图和版本，并查看实时价格样本、历史价格入口与外部数据源。</p>
+        </div>
+        <div class="research-status" aria-label="数据能力">
+          <span><i></i>图鉴 API</span>
+          <span><i class="review"></i>价格源按接入状态</span>
+          <span><i class="review"></i>登录源按授权接入</span>
+        </div>
+      </section>
+
+      <section class="search-workbench" aria-label="查询条件">
+        <label class="search-box">
+          <span>查询卡牌</span>
+          <input id="searchInput" type="search" placeholder="例如：月亮伊布、Gengar、201/165、Evolving Skies" autocomplete="off" autofocus />
+        </label>
+        <p>支持中文或英文关键词，可同时匹配卡名、编号、系列与角色。</p>
+      </section>
+
+      <section class="workspace">
+        <section class="panel result-panel lookup-panel" aria-label="查询结果">
+          <div class="section-head">
+            <div><p class="eyebrow">Catalog & Price Sources</p><h2>图鉴、报价与来源</h2></div>
+            <span id="externalStatus" class="count-pill" aria-live="polite">等待查询</span>
+          </div>
+          <section id="externalPanel" class="external-panel">
+            <div id="externalNotes" class="note-list"></div>
+            <div id="externalQuoteList" class="quote-list"></div>
+            <section id="catalogSection" class="catalog-section" hidden>
+              <div class="section-head compact"><div><p class="eyebrow">Catalog Match</p><h2>卡牌图鉴</h2></div><span id="catalogCount" class="count-pill">0 张</span></div>
+              <div id="catalogGrid" class="catalog-grid"></div>
+            </section>
+            <div id="externalCandidateList" class="candidate-links"></div>
+            <details class="directory-panel">
+              <summary>外部数据库直达入口</summary>
+              <div id="externalLinkList" class="link-list"></div>
+            </details>
+            <details id="requirementsSection" class="requirements-section" hidden>
+              <summary>需要授权的数据源</summary>
+              <div id="requirementsList" class="requirements-grid"></div>
+            </details>
+          </section>
+        </section>
+      </section>
+    </main>
+
+    <script src="./config.js?v=20260807-1"></script>
+    <script src="./app.js?v=20260807-1"></script>
+  </body>
+</html>

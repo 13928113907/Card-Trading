@@ -4,6 +4,7 @@
   "type": "module",
   "scripts": {
     "start": "node server.mjs",
+    "research": "node card-research/server.mjs",
     "scrape": "node scripts/scrape_auctions.mjs",
     "install-browser": "playwright install chromium"
   },

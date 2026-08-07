@@ -1,0 +1,315 @@
+{
+  "meta": {
+    "lastUpdatedAt": "2026-07-31T12:00:00.000+08:00",
+    "currency": "CNY",
+    "methodology": "Local template dataset. Historical prices are normalized monthly PSA10 reference points for UI development and should be replaced by verified PriceCharting, eBay sold, SNKRDUNK, Card Hobby, ALT or internal capture data before trading decisions."
+  },
+  "cards": [
+    {
+      "id": "ptcg-umbreon-vmax-215",
+      "category": "PTCG",
+      "grade": "PSA 10",
+      "cnName": "月亮伊布 VMAX 异画",
+      "name": "Umbreon VMAX Alt Art #215",
+      "set": "Evolving Skies",
+      "number": "215/203",
+      "character": "Umbreon",
+      "liquidity": 94,
+      "riskNote": "热门标的波动大，追高时要看近期成交而不是挂售价。",
+      "keywords": ["月亮伊布", "伊布", "umbreon", "moonbreon", "evolving skies", "215/203"],
+      "priceBands": {
+        "buyLowCny": 16500,
+        "buyHighCny": 18200,
+        "fairLowCny": 18500,
+        "fairHighCny": 20500,
+        "sellTargetCny": 22500
+      },
+      "history": [
+        { "date": "2025-07-01", "priceCny": 14200 },
+        { "date": "2025-08-01", "priceCny": 15100 },
+        { "date": "2025-09-01", "priceCny": 15900 },
+        { "date": "2025-10-01", "priceCny": 17100 },
+        { "date": "2025-11-01", "priceCny": 16800 },
+        { "date": "2025-12-01", "priceCny": 17600 },
+        { "date": "2026-01-01", "priceCny": 18100 },
+        { "date": "2026-02-01", "priceCny": 18900 },
+        { "date": "2026-03-01", "priceCny": 19600 },
+        { "date": "2026-04-01", "priceCny": 19200 },
+        { "date": "2026-05-01", "priceCny": 20100 },
+        { "date": "2026-06-01", "priceCny": 20700 },
+        { "date": "2026-07-01", "priceCny": 21300 }
+      ],
+      "marketQuotes": [
+        { "platform": "eBay Sold", "label": "30日成交中位", "priceCny": 21100, "sampleCount": 18 },
+        { "platform": "PriceCharting", "label": "PSA10 参考价", "priceCny": 20800, "sampleCount": 42 },
+        { "platform": "SNKRDUNK", "label": "当前低价折算", "priceCny": 21900, "sampleCount": 6 }
+      ],
+      "recentSales": [
+        { "date": "2026-07-24", "source": "eBay", "priceCny": 21450, "note": "PSA 10, English" },
+        { "date": "2026-07-16", "source": "eBay", "priceCny": 20980, "note": "auction close" },
+        { "date": "2026-07-03", "source": "SNKRDUNK", "priceCny": 21820, "note": "Japan listing sold" }
+      ],
+      "links": [
+        { "label": "PriceCharting", "url": "https://www.pricecharting.com/search-products?q=Umbreon+VMAX+215+PSA+10&type=prices" },
+        { "label": "eBay Sold", "url": "https://www.ebay.com/sch/i.html?_nkw=Umbreon+VMAX+215+PSA+10&LH_Sold=1&LH_Complete=1" },
+        { "label": "eBay Active", "url": "https://www.ebay.com/sch/i.html?_nkw=Umbreon+VMAX+215+PSA+10" },
+        { "label": "SNKRDUNK", "url": "https://snkrdunk.com/en/search/result?keyword=Umbreon%20VMAX%20215%20PSA%2010" }
+      ]
+    },
+    {
+      "id": "ptcg-gengar-vmax-271",
+      "category": "PTCG",
+      "grade": "PSA 10",
+      "cnName": "耿鬼 VMAX 异画",
+      "name": "Gengar VMAX Alt Art #271",
+      "set": "Fusion Strike",
+      "number": "271/264",
+      "character": "Gengar",
+      "liquidity": 90,
+      "riskNote": "英文现代大热门，流通好但同类替代品多。",
+      "keywords": ["耿鬼", "gengar", "fusion strike", "271/264", "alt art"],
+      "priceBands": {
+        "buyLowCny": 5900,
+        "buyHighCny": 6600,
+        "fairLowCny": 6700,
+        "fairHighCny": 7600,
+        "sellTargetCny": 8600
+      },
+      "history": [
+        { "date": "2025-07-01", "priceCny": 5200 },
+        { "date": "2025-08-01", "priceCny": 5480 },
+        { "date": "2025-09-01", "priceCny": 5710 },
+        { "date": "2025-10-01", "priceCny": 6020 },
+        { "date": "2025-11-01", "priceCny": 6250 },
+        { "date": "2025-12-01", "priceCny": 6410 },
+        { "date": "2026-01-01", "priceCny": 6700 },
+        { "date": "2026-02-01", "priceCny": 6890 },
+        { "date": "2026-03-01", "priceCny": 7210 },
+        { "date": "2026-04-01", "priceCny": 7080 },
+        { "date": "2026-05-01", "priceCny": 7420 },
+        { "date": "2026-06-01", "priceCny": 7710 },
+        { "date": "2026-07-01", "priceCny": 7920 }
+      ],
+      "marketQuotes": [
+        { "platform": "eBay Sold", "label": "30日成交中位", "priceCny": 7860, "sampleCount": 21 },
+        { "platform": "PriceCharting", "label": "PSA10 参考价", "priceCny": 7750, "sampleCount": 35 },
+        { "platform": "Card Hobby", "label": "当前挂售低价", "priceCny": 8140, "sampleCount": 4 }
+      ],
+      "recentSales": [
+        { "date": "2026-07-25", "source": "eBay", "priceCny": 8050, "note": "fixed price accepted" },
+        { "date": "2026-07-13", "source": "eBay", "priceCny": 7790, "note": "auction close" },
+        { "date": "2026-07-02", "source": "Card Hobby", "priceCny": 8120, "note": "domestic sample" }
+      ],
+      "links": [
+        { "label": "PriceCharting", "url": "https://www.pricecharting.com/search-products?q=Gengar+VMAX+271+PSA+10&type=prices" },
+        { "label": "eBay Sold", "url": "https://www.ebay.com/sch/i.html?_nkw=Gengar+VMAX+271+PSA+10&LH_Sold=1&LH_Complete=1" },
+        { "label": "eBay Active", "url": "https://www.ebay.com/sch/i.html?_nkw=Gengar+VMAX+271+PSA+10" },
+        { "label": "SNKRDUNK", "url": "https://snkrdunk.com/en/search/result?keyword=Gengar%20VMAX%20271%20PSA%2010" }
+      ]
+    },
+    {
+      "id": "ptcg-charizard-151-201",
+      "category": "PTCG",
+      "grade": "PSA 10",
+      "cnName": "151 喷火龙 ex SAR",
+      "name": "Charizard ex SAR Japanese #201",
+      "set": "Pokemon Card 151",
+      "number": "201/165",
+      "character": "Charizard",
+      "liquidity": 95,
+      "riskNote": "151 热度强，但现代卡分级供给释放会压制溢价。",
+      "keywords": ["喷火龙", "charizard", "151", "201/165", "sar"],
+      "priceBands": {
+        "buyLowCny": 2550,
+        "buyHighCny": 2950,
+        "fairLowCny": 3000,
+        "fairHighCny": 3400,
+        "sellTargetCny": 3850
+      },
+      "history": [
+        { "date": "2025-07-01", "priceCny": 2300 },
+        { "date": "2025-08-01", "priceCny": 2440 },
+        { "date": "2025-09-01", "priceCny": 2660 },
+        { "date": "2025-10-01", "priceCny": 2810 },
+        { "date": "2025-11-01", "priceCny": 2750 },
+        { "date": "2025-12-01", "priceCny": 2920 },
+        { "date": "2026-01-01", "priceCny": 3070 },
+        { "date": "2026-02-01", "priceCny": 3160 },
+        { "date": "2026-03-01", "priceCny": 3320 },
+        { "date": "2026-04-01", "priceCny": 3250 },
+        { "date": "2026-05-01", "priceCny": 3390 },
+        { "date": "2026-06-01", "priceCny": 3520 },
+        { "date": "2026-07-01", "priceCny": 3610 }
+      ],
+      "marketQuotes": [
+        { "platform": "eBay Sold", "label": "30日成交中位", "priceCny": 3580, "sampleCount": 28 },
+        { "platform": "PriceCharting", "label": "PSA10 参考价", "priceCny": 3490, "sampleCount": 51 },
+        { "platform": "SNKRDUNK", "label": "当前低价折算", "priceCny": 3710, "sampleCount": 11 }
+      ],
+      "recentSales": [
+        { "date": "2026-07-27", "source": "eBay", "priceCny": 3620, "note": "Japanese PSA10" },
+        { "date": "2026-07-18", "source": "SNKRDUNK", "priceCny": 3690, "note": "Japan sold" },
+        { "date": "2026-07-06", "source": "eBay", "priceCny": 3510, "note": "auction close" }
+      ],
+      "links": [
+        { "label": "PriceCharting", "url": "https://www.pricecharting.com/search-products?q=Charizard+ex+SAR+201+PSA+10&type=prices" },
+        { "label": "eBay Sold", "url": "https://www.ebay.com/sch/i.html?_nkw=Charizard+ex+SAR+201%2F165+PSA+10&LH_Sold=1&LH_Complete=1" },
+        { "label": "eBay Active", "url": "https://www.ebay.com/sch/i.html?_nkw=Charizard+ex+SAR+201%2F165+PSA+10" },
+        { "label": "SNKRDUNK", "url": "https://snkrdunk.com/en/search/result?keyword=Charizard%20ex%20201%20165%20PSA%2010" }
+      ]
+    },
+    {
+      "id": "ptcg-pikachu-grey-felt-hat",
+      "category": "PTCG",
+      "grade": "PSA 10",
+      "cnName": "梵高皮卡丘",
+      "name": "Pikachu with Grey Felt Hat",
+      "set": "SV Promo",
+      "number": "085",
+      "character": "Pikachu",
+      "liquidity": 96,
+      "riskNote": "全球流通极强，但市场供给和假溢价挂单都多。",
+      "keywords": ["梵高", "皮卡丘", "pikachu", "grey felt hat", "van gogh", "085"],
+      "priceBands": {
+        "buyLowCny": 16500,
+        "buyHighCny": 18500,
+        "fairLowCny": 18800,
+        "fairHighCny": 21000,
+        "sellTargetCny": 23800
+      },
+      "history": [
+        { "date": "2025-07-01", "priceCny": 13200 },
+        { "date": "2025-08-01", "priceCny": 13900 },
+        { "date": "2025-09-01", "priceCny": 14800 },
+        { "date": "2025-10-01", "priceCny": 16200 },
+        { "date": "2025-11-01", "priceCny": 17100 },
+        { "date": "2025-12-01", "priceCny": 17800 },
+        { "date": "2026-01-01", "priceCny": 18400 },
+        { "date": "2026-02-01", "priceCny": 19000 },
+        { "date": "2026-03-01", "priceCny": 19800 },
+        { "date": "2026-04-01", "priceCny": 19400 },
+        { "date": "2026-05-01", "priceCny": 20300 },
+        { "date": "2026-06-01", "priceCny": 21100 },
+        { "date": "2026-07-01", "priceCny": 21800 }
+      ],
+      "marketQuotes": [
+        { "platform": "eBay Sold", "label": "30日成交中位", "priceCny": 21650, "sampleCount": 32 },
+        { "platform": "PriceCharting", "label": "PSA10 参考价", "priceCny": 21300, "sampleCount": 60 },
+        { "platform": "ALT", "label": "历史成交参考", "priceCny": 22040, "sampleCount": 8 }
+      ],
+      "recentSales": [
+        { "date": "2026-07-28", "source": "eBay", "priceCny": 21920, "note": "PSA 10 promo" },
+        { "date": "2026-07-19", "source": "ALT", "priceCny": 22040, "note": "vault sale reference" },
+        { "date": "2026-07-08", "source": "eBay", "priceCny": 21380, "note": "auction close" }
+      ],
+      "links": [
+        { "label": "PriceCharting", "url": "https://www.pricecharting.com/search-products?q=Pikachu+Grey+Felt+Hat+PSA+10&type=prices" },
+        { "label": "eBay Sold", "url": "https://www.ebay.com/sch/i.html?_nkw=Pikachu+Grey+Felt+Hat+PSA+10&LH_Sold=1&LH_Complete=1" },
+        { "label": "eBay Active", "url": "https://www.ebay.com/sch/i.html?_nkw=Pikachu+Grey+Felt+Hat+PSA+10" },
+        { "label": "ALT", "url": "https://www.alt.xyz/search?q=Pikachu%20Grey%20Felt%20Hat%20PSA%2010" }
+      ]
+    },
+    {
+      "id": "op-luffy-manga-op05",
+      "category": "One Piece",
+      "grade": "PSA 10",
+      "cnName": "路飞 Manga OP05",
+      "name": "Monkey D. Luffy Manga Parallel",
+      "set": "Awakening of the New Era",
+      "number": "OP05-119",
+      "character": "Luffy",
+      "liquidity": 82,
+      "riskNote": "One Piece 高价卡成交样本少，价差判断要放大误差范围。",
+      "keywords": ["路飞", "luffy", "manga", "op05", "op05-119", "one piece"],
+      "priceBands": {
+        "buyLowCny": 14200,
+        "buyHighCny": 15800,
+        "fairLowCny": 16000,
+        "fairHighCny": 18000,
+        "sellTargetCny": 20500
+      },
+      "history": [
+        { "date": "2025-07-01", "priceCny": 11600 },
+        { "date": "2025-08-01", "priceCny": 12100 },
+        { "date": "2025-09-01", "priceCny": 12700 },
+        { "date": "2025-10-01", "priceCny": 13400 },
+        { "date": "2025-11-01", "priceCny": 13800 },
+        { "date": "2025-12-01", "priceCny": 14600 },
+        { "date": "2026-01-01", "priceCny": 15100 },
+        { "date": "2026-02-01", "priceCny": 14900 },
+        { "date": "2026-03-01", "priceCny": 15600 },
+        { "date": "2026-04-01", "priceCny": 16300 },
+        { "date": "2026-05-01", "priceCny": 17000 },
+        { "date": "2026-06-01", "priceCny": 17600 },
+        { "date": "2026-07-01", "priceCny": 18100 }
+      ],
+      "marketQuotes": [
+        { "platform": "eBay Sold", "label": "90日成交中位", "priceCny": 17900, "sampleCount": 7 },
+        { "platform": "PriceCharting", "label": "PSA10 参考价", "priceCny": 17400, "sampleCount": 12 },
+        { "platform": "Card Hobby", "label": "当前挂售低价", "priceCny": 18600, "sampleCount": 3 }
+      ],
+      "recentSales": [
+        { "date": "2026-07-22", "source": "eBay", "priceCny": 18200, "note": "PSA 10 English" },
+        { "date": "2026-06-30", "source": "Card Hobby", "priceCny": 18800, "note": "domestic listing sold" },
+        { "date": "2026-06-11", "source": "eBay", "priceCny": 17150, "note": "auction close" }
+      ],
+      "links": [
+        { "label": "PriceCharting", "url": "https://www.pricecharting.com/search-products?q=Luffy+Manga+OP05-119+PSA+10&type=prices" },
+        { "label": "eBay Sold", "url": "https://www.ebay.com/sch/i.html?_nkw=Luffy+Manga+OP05-119+PSA+10&LH_Sold=1&LH_Complete=1" },
+        { "label": "eBay Active", "url": "https://www.ebay.com/sch/i.html?_nkw=Luffy+Manga+OP05-119+PSA+10" },
+        { "label": "Card Hobby", "url": "https://www.cardhobby.com.cn/" }
+      ]
+    },
+    {
+      "id": "sports-lebron-chrome-111",
+      "category": "Sports",
+      "grade": "PSA 10",
+      "cnName": "詹姆斯 Topps Chrome 新秀",
+      "name": "LeBron James Topps Chrome Rookie",
+      "set": "2003 Topps Chrome",
+      "number": "#111",
+      "character": "LeBron James",
+      "liquidity": 88,
+      "riskNote": "体育卡受赛季和宏观资金影响明显，短期波动可能超过 PTCG。",
+      "keywords": ["詹姆斯", "lebron", "topps chrome", "rookie", "111", "sports"],
+      "priceBands": {
+        "buyLowCny": 36000,
+        "buyHighCny": 40500,
+        "fairLowCny": 41000,
+        "fairHighCny": 46000,
+        "sellTargetCny": 52000
+      },
+      "history": [
+        { "date": "2025-07-01", "priceCny": 33500 },
+        { "date": "2025-08-01", "priceCny": 34200 },
+        { "date": "2025-09-01", "priceCny": 35100 },
+        { "date": "2025-10-01", "priceCny": 36500 },
+        { "date": "2025-11-01", "priceCny": 38100 },
+        { "date": "2025-12-01", "priceCny": 37400 },
+        { "date": "2026-01-01", "priceCny": 39200 },
+        { "date": "2026-02-01", "priceCny": 40500 },
+        { "date": "2026-03-01", "priceCny": 41800 },
+        { "date": "2026-04-01", "priceCny": 42600 },
+        { "date": "2026-05-01", "priceCny": 42100 },
+        { "date": "2026-06-01", "priceCny": 43800 },
+        { "date": "2026-07-01", "priceCny": 44700 }
+      ],
+      "marketQuotes": [
+        { "platform": "eBay Sold", "label": "90日成交中位", "priceCny": 44500, "sampleCount": 10 },
+        { "platform": "PriceCharting", "label": "PSA10 参考价", "priceCny": 43100, "sampleCount": 18 },
+        { "platform": "ALT", "label": "成交记录参考", "priceCny": 45200, "sampleCount": 6 }
+      ],
+      "recentSales": [
+        { "date": "2026-07-20", "source": "ALT", "priceCny": 45200, "note": "PSA 10 refractor excluded" },
+        { "date": "2026-07-10", "source": "eBay", "priceCny": 44100, "note": "base rookie PSA 10" },
+        { "date": "2026-06-27", "source": "eBay", "priceCny": 43600, "note": "auction close" }
+      ],
+      "links": [
+        { "label": "PriceCharting", "url": "https://www.pricecharting.com/search-products?q=LeBron+James+Topps+Chrome+111+PSA+10&type=prices" },
+        { "label": "eBay Sold", "url": "https://www.ebay.com/sch/i.html?_nkw=LeBron+James+Topps+Chrome+111+PSA+10&LH_Sold=1&LH_Complete=1" },
+        { "label": "eBay Active", "url": "https://www.ebay.com/sch/i.html?_nkw=LeBron+James+Topps+Chrome+111+PSA+10" },
+        { "label": "ALT", "url": "https://www.alt.xyz/search?q=LeBron%20James%20Topps%20Chrome%20111%20PSA%2010" }
+      ]
+    }
+  ]
+}

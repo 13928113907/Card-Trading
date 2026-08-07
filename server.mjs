@@ -3,9 +3,11 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { handleResearch } from "./card-research/server.mjs";
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 const webRoot = path.join(root, "web");
+const cardResearchRoot = path.join(root, "card-research");
 const dataRoot = path.join(webRoot, "data");
 const runtimeDataRoot = path.resolve(process.env.DATA_DIR || dataRoot);
 const runtimeCaptureRoot = path.resolve(process.env.CAPTURE_DIR || path.join(webRoot, "captures"));
@@ -185,6 +187,10 @@ const server = http.createServer(async (req, res) => {
       sendJson(req, res, 200, refreshStatus());
       return;
     }
+    if (url.pathname === "/api/research") {
+      await handleResearch(req, res, url);
+      return;
+    }
     if (url.pathname === "/healthz") {
       sendJson(req, res, 200, { ok: true });
       return;
@@ -192,8 +198,25 @@ const server = http.createServer(async (req, res) => {
 
     const requested = url.pathname === "/" ? "/index.html" : decodeURIComponent(url.pathname);
     const isRuntimeCapture = requested.startsWith("/captures/");
-    const staticRoot = isRuntimeCapture ? runtimeCaptureRoot : webRoot;
-    const relativePath = isRuntimeCapture ? requested.slice("/captures/".length) : requested;
+    const isLegacyResearch = requested === "/card-research" || requested.startsWith("/card-research/");
+    const isCardResearch = requested === "/research" || requested.startsWith("/research/") || isLegacyResearch;
+    if (requested === "/research") {
+      res.writeHead(308, { location: "/research/" });
+      res.end();
+      return;
+    }
+    if (isLegacyResearch) {
+      const suffix = requested.replace(/^\/card-research\/?/, "");
+      res.writeHead(308, { location: `/research/${suffix}` });
+      res.end();
+      return;
+    }
+    const staticRoot = isRuntimeCapture ? runtimeCaptureRoot : isCardResearch ? cardResearchRoot : webRoot;
+    const relativePath = isRuntimeCapture
+      ? requested.slice("/captures/".length)
+      : isCardResearch
+        ? requested.replace(/^\/research\/?/, "") || "index.html"
+        : requested;
     const filePath = path.normalize(path.join(staticRoot, relativePath));
     if (!filePath.startsWith(staticRoot)) {
       res.writeHead(403);

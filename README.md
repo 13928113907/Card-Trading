@@ -72,3 +72,16 @@ SNKRDUNK TCG prices require an authenticated server-side collector. Never place 
 ## Local Preview
 
 Open `web/index.html` directly in a browser, or serve the `web` folder with any static file server.
+
+## Unified Website Modules
+
+- `/` is the market monitor for live auctions, profit opportunities, PSA10 annual research, and the review queue.
+- `/research/` is the independent card lookup module for catalog images, provider status, price samples, and external research sources.
+- Both modules share one navigation and visual language while keeping their frontend code and API workflows isolated.
+- The market frontend reads the latest server snapshot every 60 seconds. Collector freshness remains visible in the page status and is not presented as a live quote when stale.
+- Run `npm run research` to use the template API at `http://127.0.0.1:8080/`.
+- Any keyword can generate external lookup links. If `EBAY_CLIENT_ID` and `EBAY_CLIENT_SECRET` are set, `/api/research?q=...` also reads live eBay Browse API listing samples.
+- The lookup panel groups broader sources: 130 Point, eBay, Mavin, PriceCharting/SportsCardsPro, PSA Price Guide, PSA Pop Report, TCGplayer, Scryfall, YGOPRODeck, Cardmarket, Collectr, Pokellector, TCDB, Cardboard Connection, Topps, Panini, Beckett, Card Ladder, Market Movers, HobbyCardIndex, SNKRDUNK, Card Hobby, Fanatics Collect, Goldin, ALT, and COMC.
+- Pokémon/宝可梦中文关键词 are mapped to English catalog terms for the catalog layer. For example, `月亮伊布` maps to `Umbreon`; the backend queries Pokémon TCG API first and falls back to TCGdex when that API is unavailable.
+- Free API catalog/price integrations are active for Pokémon TCG API/TCGdex, Scryfall, and YGOPRODeck. See `docs/ebay-developer-api.md` for the eBay Developer key setup and the current free/paid source split.
+- Some sources are direct/paid/login-gated references rather than stable public APIs. PriceCharting/SportsCardsPro, PSA, Card Ladder, Market Movers, Card Hobby, SNKRDUNK, ALT, and auction houses should be treated as data sources to open, subscribe to, authorize, cache, or import before the template can automatically fill every historical chart.

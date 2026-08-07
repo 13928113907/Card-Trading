@@ -1,7 +1,7 @@
 const FALLBACK_URL = "./data/auctions.example.json";
 const MARKET_URL = "./data/market-year.json";
 const LIVE_URL = "./data/auctions.live.json";
-const AUTO_REFRESH_MS = 5 * 60 * 1000;
+const AUTO_REFRESH_MS = 60 * 1000;
 const API_BASE_URL = String(window.CARD_TRADING_CONFIG?.apiBaseUrl || "").replace(/\/+$/, "");
 
 let auctions = [];
@@ -571,7 +571,7 @@ function renderStatus() {
   if (dataMode === "api") {
     const connected = sourceStatus.filter((source) => source.connected).map((source) => `${source.name} ${source.count ?? 0}条`);
     const unavailable = sourceStatus.filter((source) => !source.connected).map((source) => source.name);
-    dataModeNote.textContent = `已核验：${connected.join("、") || "暂无"}；待核验候选 ${candidateListings.length} 条。未接通：${unavailable.join("、") || "无"}。服务器每 5 分钟抓取一次。`;
+    dataModeNote.textContent = `已核验：${connected.join("、") || "暂无"}；待核验候选 ${candidateListings.length} 条。未接通：${unavailable.join("、") || "无"}。前端每 60 秒读取服务器最新快照。`;
   } else if (dataMode === "live") {
     dataModeNote.textContent = "当前仍是 GitHub 静态快照；配置 HTTPS 实时 API 后才会产生新价格和浮动。";
   } else {

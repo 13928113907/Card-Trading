@@ -7,6 +7,7 @@ RUN npm install --omit=dev
 COPY server.mjs ./
 COPY scripts ./scripts
 COPY web ./web
+COPY card-research ./card-research
 COPY docs ./docs
 RUN mkdir -p /app/runtime/data /app/runtime/captures
 
