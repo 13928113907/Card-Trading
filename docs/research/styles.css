@@ -436,6 +436,10 @@ select {
   color: var(--red) !important;
 }
 
+.provider-skipped {
+  color: var(--muted) !important;
+}
+
 .empty-state {
   display: grid;
   place-items: center;

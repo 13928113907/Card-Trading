@@ -18,6 +18,9 @@ const minPsa10PriceCny = Number(process.env.MIN_PSA10_PRICE_CNY || 500);
 const minOpportunityRoi = Number(process.env.MIN_OPPORTUNITY_ROI || 0.2);
 const targetsPerRefresh = Math.max(1, Number(process.env.TARGETS_PER_REFRESH || 6));
 const navigationTimeoutMs = Math.max(5000, Number(process.env.NAVIGATION_TIMEOUT_MS || 20000));
+const targetTimeoutMs = Math.max(navigationTimeoutMs + 5000, Number(process.env.TARGET_TIMEOUT_MS || 30000));
+const listingRetentionMs = Math.max(60000, Number(process.env.LISTING_RETENTION_MS || 6 * 60 * 60 * 1000));
+const salePriceVerificationMs = Math.max(60000, Number(process.env.SALE_PRICE_VERIFICATION_MS || 24 * 60 * 60 * 1000));
 const captureSearchScreenshots = process.env.CAPTURE_SEARCH_SCREENSHOTS === "1";
 const snapshotIntervalSeconds = Math.round(Number(process.env.REFRESH_MS || 60000) / 1000);
 const browserStateDir = process.env.BROWSER_STATE_DIR
@@ -371,7 +374,7 @@ function titleMatchesTarget(title, target) {
   return target.anyNumber.some((term) => lower.includes(term.toLowerCase()));
 }
 
-function enrichFinancials(item) {
+export function enrichFinancials(item) {
   const fees =
     item.currentBidCny * item.feeRate +
     item.currentBidCny * item.paymentFeeRate +
@@ -381,12 +384,17 @@ function enrichFinancials(item) {
   const totalCostCny = item.currentBidCny + fees;
   const actualProfitCny = item.expectedSaleCny - totalCostCny;
   const roi = totalCostCny > 0 ? actualProfitCny / totalCostCny : 0;
+  const profitQualified =
+    isListingRetainable(item) &&
+    listingVerificationIssues(item).length === 0 &&
+    isVerifiedSalePrice(item);
   return {
     ...item,
     feesCny: Math.round(fees),
     totalCostCny: Math.round(totalCostCny),
     actualProfitCny: Math.round(actualProfitCny),
     roi,
+    profitQualified,
   };
 }
 
@@ -412,6 +420,79 @@ async function launchBrowser() {
       shared: false,
     };
   }
+}
+
+export async function withTimeout(promise, timeoutMs, label) {
+  let timeout;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise((_, reject) => {
+        timeout = setTimeout(() => reject(new Error(`${label} exceeded ${timeoutMs}ms`)), timeoutMs);
+      }),
+    ]);
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+export function isListingRetainable(row, nowMs = Date.now(), maxAgeMs = listingRetentionMs) {
+  const endMs = row?.auctionEndAt ? new Date(row.auctionEndAt).getTime() : null;
+  if (endMs !== null && (!Number.isFinite(endMs) || endMs <= nowMs)) return false;
+
+  const capturedMs = row?.lastCapturedAt ? new Date(row.lastCapturedAt).getTime() : null;
+  if (capturedMs === null || !Number.isFinite(capturedMs)) return false;
+  return nowMs - capturedMs <= maxAgeMs;
+}
+
+export function listingVerificationIssues(listing) {
+  return [
+    !listing?.sourceListingId && "缺少商品 ID",
+    (!listing?.url || (listing.searchUrl && listing.url === listing.searchUrl)) && "缺少商品直达链接",
+    !listing?.imageUrl && "缺少原图",
+    !listing?.auctionStartAt && "缺少竞价开始时间",
+    !listing?.auctionEndAt && "缺少竞价结束时间",
+    !listing?.shippingFrom && "缺少发货地",
+    !(Number(listing?.currentBidCny) > 0) && "缺少有效竞价",
+  ].filter(Boolean);
+}
+
+export function isVerifiedSalePrice(row, nowMs = Date.now(), maxAgeMs = salePriceVerificationMs) {
+  if ((row?.salePriceStatus || row?.priceStatus) !== "verified") return false;
+  if (!(Number(row?.expectedSaleCny) > 0)) return false;
+  const verifiedMs = row?.salePriceVerifiedAt ? new Date(row.salePriceVerifiedAt).getTime() : NaN;
+  return Number.isFinite(verifiedMs) && nowMs - verifiedMs >= 0 && nowMs - verifiedMs <= maxAgeMs;
+}
+
+export async function collectPlatformTargets({ platform, targets, context, onListings }) {
+  const errors = [];
+  let completed = 0;
+
+  for (const target of targets) {
+    let page = null;
+    try {
+      page = await withTimeout(context.newPage(), 5000, `${platform.name} page creation`);
+      await page.route("**/*", (route) => {
+        const resourceType = route.request().resourceType();
+        return ["image", "media", "font"].includes(resourceType)
+          ? route.abort()
+          : route.continue();
+      });
+      const listings = await withTimeout(
+        platform.scrape(page, target),
+        targetTimeoutMs,
+        `${platform.name} ${target.id}`
+      );
+      await onListings(listings, target);
+      completed += 1;
+    } catch (error) {
+      errors.push({ platformId: platform.id, targetId: target.id, message: error.message });
+    } finally {
+      await page?.close().catch(() => {});
+    }
+  }
+
+  return { completed, errors };
 }
 
 async function newPlatformContext(browser, platform) {
@@ -487,11 +568,6 @@ async function scrapeEbay(page, target) {
       const currentBidCny = parsePriceToCny(row.price);
       const defaults = platformDefaults.eBay;
       const sourceListingId = ebayListingId(row.url || url);
-      const verificationIssues = [
-        !sourceListingId && "缺少商品 ID",
-        (!row.url || row.url === url) && "缺少商品直达链接",
-        !row.imageUrl && "缺少原图",
-      ].filter(Boolean);
       const base = {
         ...target,
         sourceListingId,
@@ -516,6 +592,7 @@ async function scrapeEbay(page, target) {
         screenshot: captureSearchScreenshots ? `/captures/${path.basename(capturePath)}` : null,
         lastCapturedAt: capturedAt.toISOString(),
       };
+      const verificationIssues = listingVerificationIssues({ ...base, searchUrl: url });
       if (verificationIssues.length) {
         candidates.push({
           ...base,
@@ -744,32 +821,32 @@ async function collectLoggedMarketplaces(
   const errors = [];
   const browserSession = existingBrowserSession || await launchBrowser();
   const ownsBrowserSession = !existingBrowserSession;
-  const context = browserSession.shared
-    ? browserSession.browser.contexts()[0]
-    : await browserSession.browser.newContext({
-        viewport: { width: 1440, height: 1100 },
-      });
+  let context = null;
+  try {
+    context = browserSession.shared
+      ? browserSession.browser.contexts()[0]
+      : await browserSession.browser.newContext({ viewport: { width: 1440, height: 1100 } });
+    if (!context) throw new Error("browser context is unavailable");
+  } catch (error) {
+    for (const platform of platforms) {
+      platform.completed = 0;
+      errors.push(...targets.map((target) => ({
+        platformId: platform.id,
+        targetId: target.id,
+        message: error.message,
+      })));
+    }
+  }
 
-  for (const platform of platforms) {
-    const page = await context.newPage();
-    await page.route("**/*", (route) => {
-      const resourceType = route.request().resourceType();
-      return ["image", "media", "font"].includes(resourceType)
-        ? route.abort()
-        : route.continue();
-    });
-    let completed = 0;
-    for (const target of targets) {
-      try {
-        const listings = await platform.scrape(page, target);
+  if (context) {
+    for (const platform of platforms) {
+      const result = await collectPlatformTargets({
+        platform,
+        targets,
+        context,
+        onListings: async (listings, target) => {
         for (const listing of listings) {
-          const verificationIssues = [
-            !listing.sourceListingId && "缺少商品 ID",
-            !listing.url && "缺少商品直达链接",
-            !listing.imageUrl && "缺少原图",
-            !listing.auctionEndAt && "缺少竞价结束时间",
-            !listing.auctionStartAt && "缺少竞价开始时间",
-          ].filter(Boolean);
+          const verificationIssues = listingVerificationIssues(listing);
           const listingId =
             listing.sourceListingId?.split(":").at(-1) ||
             stableHash(`${listing.sourceTitle}|${listing.currentBidCny}`);
@@ -788,21 +865,15 @@ async function collectLoggedMarketplaces(
             });
           }
         }
-        completed += 1;
-      } catch (error) {
-        errors.push({
-          platformId: platform.id,
-          targetId: target.id,
-          message: error.message,
-        });
-      }
+        },
+      });
+      platform.completed = result.completed;
+      errors.push(...result.errors);
     }
-    await page.close().catch(() => {});
-    platform.completed = completed;
   }
 
-  if (!browserSession.shared) {
-    await context.close();
+  if (!browserSession.shared && context) {
+    await context.close().catch(() => {});
     if (ownsBrowserSession) {
       await browserSession.browser.close();
     }
@@ -884,11 +955,6 @@ async function collectEbayApi(targets) {
           continue;
         }
         const checkedAt = new Date().toISOString();
-        const verificationIssues = [
-          !listingId && "缺少商品 ID",
-          !item.itemWebUrl && "缺少商品直达链接",
-          !item.image?.imageUrl && "缺少原图",
-        ].filter(Boolean);
         const base = {
           ...target,
           sourceListingId: listingId ? `ebay:${listingId}` : null,
@@ -914,6 +980,7 @@ async function collectEbayApi(targets) {
           sourceEndText: "",
           lastCapturedAt: checkedAt,
         };
+        const verificationIssues = listingVerificationIssues(base);
         if (verificationIssues.length) {
           candidates.push({
             ...base,
@@ -958,6 +1025,8 @@ async function main() {
       sourceName: card.sourceName,
       sourceUrl: card.sourceUrl,
       priceConfidence: card.confidence,
+      salePriceStatus: card.priceStatus || "estimated",
+      salePriceVerifiedAt: card.verifiedAt || null,
     }));
   const batchCount = Math.max(1, Math.ceil(allTargets.length / targetsPerRefresh));
   const refreshRunId = Math.max(1, Number(process.env.REFRESH_RUN_ID || 1));
@@ -1020,7 +1089,19 @@ async function main() {
     rates: { usdCny, twdCny, jpyCny },
     expectedSaleCny,
   });
-  auctions.push(...snkrdunk.rows);
+  for (const row of snkrdunk.rows) {
+    const verificationIssues = listingVerificationIssues(row);
+    if (verificationIssues.length) {
+      candidates.push({
+        ...row,
+        status: "待核验/SNKRDUNK登录数据源",
+        verificationIssues,
+        searchUrl: row.url,
+      });
+    } else {
+      auctions.push(row);
+    }
+  }
   const loggedMarketplaces = ["fanatics", "cardhobby"].includes(activeSourceId)
     ? await collectLoggedMarketplaces(
         targets,
@@ -1045,6 +1126,7 @@ async function main() {
       row.id === targetId || String(row.id || "").startsWith(`${targetId}-`)
     );
   const shouldRetainPrevious = (row) => {
+    if (!isListingRetainable(row)) return false;
     const targetId = refreshedTargetIdFor(row);
     if (!targetId) return true;
     if (row.platform === "eBay") {
@@ -1067,14 +1149,11 @@ async function main() {
   candidates.push(
     ...(previousPayload.candidates || []).filter(shouldRetainPrevious)
   );
+  auctions.splice(0, auctions.length, ...auctions.filter((row) => isListingRetainable(row)));
+  candidates.splice(0, candidates.length, ...candidates.filter((row) => isListingRetainable(row)));
   if (auctions.length === 0 && candidates.length === 0) {
-    const hasPreviousSnapshot =
-      (previousPayload.auctions || []).length > 0 || (previousPayload.candidates || []).length > 0;
-    if (!hasPreviousSnapshot) {
-      throw new Error(`No listings collected and no previous snapshot is available. eBay errors: ${ebayErrors.length}`);
-    }
     const lastAttemptAt = new Date().toISOString();
-    const message = `本轮未获取到新商品，已保留上一份数据（eBay ${ebayErrors.length} 个检索失败）`;
+    const message = `本轮没有仍在有效期内的商品（eBay ${ebayErrors.length} 个检索失败）`;
     const preservedPayload = {
       ...previousPayload,
       mode: "live",
@@ -1082,6 +1161,9 @@ async function main() {
       dataStale: true,
       lastAttemptAt,
       lastAttemptMessage: message,
+      auctions: [],
+      candidates: [],
+      opportunities: [],
       sources: (previousPayload.sources || []).map((source) =>
         source.id === "ebay"
           ? {
@@ -1117,7 +1199,7 @@ async function main() {
     });
   });
   const opportunities = enrichedAuctions
-    .filter((row) => row.currentBidCny > 0 && row.roi >= minOpportunityRoi)
+    .filter((row) => row.profitQualified && row.currentBidCny > 0 && row.roi >= minOpportunityRoi)
     .sort((a, b) => b.actualProfitCny - a.actualProfitCny);
 
   const lastUpdatedAt = new Date().toISOString();
@@ -1191,11 +1273,13 @@ async function main() {
   console.log(JSON.stringify({ preserved: false, message: "抓取完成", outputPath }));
 }
 
-main()
-  .then(() => {
-    setTimeout(() => process.exit(0), 50);
-  })
-  .catch((error) => {
-    console.error(error);
-    process.exit(1);
-  });
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  main()
+    .then(() => {
+      setTimeout(() => process.exit(0), 50);
+    })
+    .catch((error) => {
+      console.error(error);
+      process.exit(1);
+    });
+}

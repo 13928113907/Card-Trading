@@ -313,7 +313,7 @@ function renderMarketTable(rows) {
       row.priceStatus === "verified"
         ? "PSA10节点已核"
         : row.priceStatus === "estimated"
-          ? `当前已核/一年估算${row.confidence ? `/${row.confidence}` : ""}`
+          ? `当前节点曾复核/一年估算${row.confidence ? `/${row.confidence}` : ""}`
           : "待复核一年节点";
     tr.innerHTML = `
       <td><span class="tag">${row.assetClass}</span></td>
@@ -376,7 +376,8 @@ function renderActionList() {
 }
 
 function renderMetrics(rows) {
-  const positive = rows.filter((row) => row.roi >= 0.2);
+  const qualifiedRows = rows.filter((row) => row.profitQualified === true);
+  const positive = qualifiedRows.filter((row) => row.roi >= 0.2);
   const endingRows = rows.filter((row) => row.auctionEndAt && new Date(row.auctionEndAt) > new Date());
   const nearest = endingRows.reduce((best, row) => {
     if (!best) return row;
@@ -388,19 +389,22 @@ function renderMetrics(rows) {
     : 0;
   document.querySelector("#metricListings").textContent = rows.length;
   document.querySelector("#metricPositive").textContent = positive.length;
-  document.querySelector("#metricProfit").textContent = rows.length ? yuan.format(Math.max(...rows.map((row) => row.actualProfit))) : "¥0";
+  document.querySelector("#metricProfit").textContent = qualifiedRows.length
+    ? yuan.format(Math.max(...qualifiedRows.map((row) => row.actualProfit)))
+    : "¥0";
   document.querySelector("#metricEnding").textContent = nearest ? remainingText(nearest.auctionEndAt) : "--";
   document.querySelector("#metricFeeRate").textContent = pct.format(avgFeeRate);
 }
 
 function renderOpportunities() {
   opportunityGrid.innerHTML = "";
-  const rows = (opportunities.length ? opportunities : allRows().filter((row) => row.roi >= 0.2))
+  const rows = opportunities
     .map((row) => (row.roi === undefined ? enrich(row) : row))
+    .filter((row) => row.profitQualified === true)
     .sort((a, b) => (b.actualProfitCny ?? b.actualProfit) - (a.actualProfitCny ?? a.actualProfit));
 
   if (!rows.length) {
-    opportunityGrid.innerHTML = `<article class="opportunity-card muted-card">当前抓取没有 ROI 大于 20% 的竞拍。</article>`;
+    opportunityGrid.innerHTML = `<article class="opportunity-card muted-card">当前没有同时通过字段完整性、有效期和卖出价复核的 ROI &gt; 20% 竞拍。</article>`;
     return;
   }
 
@@ -477,6 +481,7 @@ function renderCandidates() {
 }
 
 function rowClass(row) {
+  if (row.profitQualified !== true) return "pending-row";
   if (row.actualProfit <= 0) return "loss";
   if (row.roi >= 0.18) return "hot";
   return "";
@@ -501,14 +506,14 @@ function renderTable(rows) {
       </td>
       <td><span class="platform-pill">${row.platform}</span></td>
       <td class="money">${yuan.format(row.currentBidCny)}${priceChangeMarkup(row)}</td>
-      <td class="money">${yuan.format(row.expectedSaleCny)}</td>
-      <td class="money">${yuan.format(row.grossProfit)}</td>
+      <td class="money">${yuan.format(row.expectedSaleCny)}<small>${row.salePriceStatus === "verified" ? "已复核" : "估值参考"}</small></td>
+      <td class="money">${row.profitQualified ? yuan.format(row.grossProfit) : "待复核"}</td>
       <td>
         <strong>${yuan.format(row.fees.total)}</strong>
         <small>平台 ${yuan.format(row.fees.platformFee)} · 支付 ${yuan.format(row.fees.paymentFee)}</small>
       </td>
-      <td class="money emphasis">${yuan.format(row.actualProfit)}</td>
-      <td class="roi">${pct.format(row.roi)}</td>
+      <td class="money emphasis">${row.profitQualified ? yuan.format(row.actualProfit) : "待复核"}</td>
+      <td class="roi">${row.profitQualified ? pct.format(row.roi) : "待复核"}</td>
       <td>${row.holdingDays}天</td>
       <td><span>${dateText(row.auctionStartAt)}</span><small>结束 ${dateText(row.auctionEndAt)} · ${remainingText(row.auctionEndAt)}</small></td>
       <td>${row.shippingFrom || "平台未提供"}</td>

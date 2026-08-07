@@ -110,7 +110,13 @@ function renderExternalPanel() {
   }
 
   const hasPayload = externalPayload?.query === query;
-  els.externalStatus.textContent = hasPayload ? "已查询" : "查询中";
+  if (hasPayload) {
+    const activeProviders = (externalPayload.providers || []).filter((provider) => !provider.skipped);
+    const successfulProviders = activeProviders.filter((provider) => provider.ok);
+    els.externalStatus.textContent = `${successfulProviders.length}/${activeProviders.length} 来源成功`;
+  } else {
+    els.externalStatus.textContent = "查询中";
+  }
   const links = hasPayload ? externalPayload.links : buildExternalLinks(query);
   const providerMessages = new Set((hasPayload ? externalPayload.providers || [] : []).map((provider) => provider.message));
   const notes = hasPayload
@@ -125,7 +131,7 @@ function renderExternalPanel() {
 
   (hasPayload ? externalPayload.providers || [] : []).forEach((provider) => {
     const p = document.createElement("p");
-    p.className = providerClass(provider.ok);
+    p.className = provider.skipped ? "provider-skipped" : providerClass(provider.ok);
     p.textContent = `${provider.provider}: ${provider.message}`;
     els.externalNotes.append(p);
   });
@@ -174,6 +180,7 @@ function renderCatalog(catalogCards, totalCount) {
       Number.isFinite(card.tcgplayerMarketUsd) ? `TCG $${card.tcgplayerMarketUsd}` : "",
       Number.isFinite(card.ebayMarketUsd) ? `eBay $${card.ebayMarketUsd}` : "",
       Number.isFinite(card.cardmarketTrendEur) ? `CM €${card.cardmarketTrendEur}` : "",
+      Number.isFinite(card.referencePriceCny) ? `参考 ¥${card.referencePriceCny.toLocaleString("zh-CN")}` : "",
     ].filter(Boolean);
     const imageHtml = card.imageSmall
       ? `<img src="${card.imageSmall}" alt="${card.name}" loading="lazy" />`

@@ -11,6 +11,9 @@ const usdCny = Number(process.env.USD_CNY || 7.2);
 const ebayClientId = process.env.EBAY_CLIENT_ID || "";
 const ebayClientSecret = process.env.EBAY_CLIENT_SECRET || "";
 const pokemonTcgApiKey = process.env.POKEMONTCG_API_KEY || "";
+const researchCacheMs = Math.max(1000, Number(process.env.RESEARCH_CACHE_MS || 5 * 60 * 1000));
+const researchSourceTimeoutMs = Math.max(3000, Number(process.env.RESEARCH_SOURCE_TIMEOUT_MS || 15000));
+const researchConcurrency = Math.max(1, Number(process.env.RESEARCH_CONCURRENCY || 2));
 
 const pokemonAliases = new Map([
   ["月亮伊布", "Umbreon"],
@@ -33,6 +36,34 @@ const pokemonAliases = new Map([
   ["莉莉艾", "Lillie"],
   ["玛俐", "Marnie"],
 ]);
+
+const pokemonEnglishNames = new Set([...pokemonAliases.values()].map((name) => name.toLowerCase()));
+
+export function classifyResearchQuery(query) {
+  const raw = String(query || "").trim().toLowerCase();
+  if (!raw) return "generic";
+  if ([...pokemonAliases.keys()].some((name) => raw.includes(name))) return "pokemon";
+  if ([...pokemonEnglishNames].some((name) => new RegExp(`\\b${name}\\b`, "i").test(raw))) return "pokemon";
+  if (/\b(?:pokemon|pokémon|evolving skies|scarlet|violet|fusion strike|shining legends)\b/i.test(raw)) return "pokemon";
+  if (/\b(?:mtg|magic(?:\s*:\s*the gathering)?|black lotus|planeswalker|mox)\b/i.test(raw)) return "magic";
+  if (/游戏王|\b(?:yu-?gi-?oh|yugioh|blue[ -]eyes|dark magician)\b/i.test(raw)) return "yugioh";
+  if (/海贼王|航海王|\b(?:one piece|luffy|zoro|nami|portgas|op\d{2})\b/i.test(raw)) return "onepiece";
+  if (/\b(?:basketball|football|baseball|nba|nfl|mlb|topps|panini|prizm|bowman|lebron|kobe|luka|wembanyama|mahomes|brady|stroud)\b/i.test(raw)) return "sports";
+  return "generic";
+}
+
+function skippedCatalog(provider, category) {
+  return {
+    ok: true,
+    skipped: true,
+    provider,
+    message: `当前识别为 ${category}，已跳过不相关图鉴。`,
+    query: "",
+    totalCount: 0,
+    cards: [],
+    quotes: [],
+  };
+}
 
 const accessLabels = {
   free: "免费直达",
@@ -82,12 +113,54 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 8000) {
 }
 
 function withTimeout(promise, timeoutMs, label) {
+  let timeout;
   return Promise.race([
     promise,
     new Promise((_, reject) => {
-      setTimeout(() => reject(new Error(`${label} timeout after ${timeoutMs}ms`)), timeoutMs);
+      timeout = setTimeout(() => reject(new Error(`${label} timeout after ${timeoutMs}ms`)), timeoutMs);
     }),
-  ]);
+  ]).finally(() => clearTimeout(timeout));
+}
+
+export function createConcurrencyLimiter(limit) {
+  let active = 0;
+  const queue = [];
+  const runNext = () => {
+    if (active >= limit || !queue.length) return;
+    const { task, resolve, reject } = queue.shift();
+    active += 1;
+    Promise.resolve()
+      .then(task)
+      .then(resolve, reject)
+      .finally(() => {
+        active -= 1;
+        runNext();
+      });
+  };
+  return (task) => new Promise((resolve, reject) => {
+    queue.push({ task, resolve, reject });
+    runNext();
+  });
+}
+
+export function createCachedLoader(loader, { ttlMs = 300000, maxEntries = 100, now = Date.now } = {}) {
+  const cache = new Map();
+  const inflight = new Map();
+  return async (key) => {
+    const cached = cache.get(key);
+    if (cached && now() - cached.storedAt < ttlMs) return cached.value;
+    if (inflight.has(key)) return inflight.get(key);
+    const request = Promise.resolve()
+      .then(() => loader(key))
+      .then((value) => {
+        cache.set(key, { value, storedAt: now() });
+        while (cache.size > maxEntries) cache.delete(cache.keys().next().value);
+        return value;
+      })
+      .finally(() => inflight.delete(key));
+    inflight.set(key, request);
+    return request;
+  };
 }
 
 function externalLinks(query) {
@@ -448,6 +521,21 @@ function pokemonCatalogQuery(query) {
   return name || translated || query;
 }
 
+export function pokemonCardNumber(query) {
+  const raw = String(query || "");
+  const fraction = raw.match(/\b(\d{1,4})\s*\/\s*\d{1,4}\b/);
+  if (fraction) return fraction[1];
+  const hash = raw.match(/#\s*(\d{1,4})\b/);
+  if (hash) return hash[1];
+  const trailing = raw.match(/\b(\d{1,4})\s*$/);
+  return trailing?.[1] || "";
+}
+
+export function matchesPokemonNumber(cardNumber, expectedNumber) {
+  if (!expectedNumber) return true;
+  return String(Number.parseInt(cardNumber, 10)) === String(Number.parseInt(expectedNumber, 10));
+}
+
 function escapePokemonQuery(value) {
   return String(value || "").replaceAll('"', '\\"');
 }
@@ -490,6 +578,37 @@ async function localMatches(query) {
     .filter((card) => card.matchScore > 0)
     .sort((a, b) => b.matchScore - a.matchScore)
     .slice(0, 8);
+}
+
+export async function fetchLocalCatalog(query) {
+  const matches = await localMatches(query);
+  return {
+    ok: matches.length > 0,
+    provider: "本地研究库兜底",
+    message: matches.length
+      ? `外部图鉴暂时无结果，已返回 ${matches.length} 条本地参考记录；该价格不是实时数据。`
+      : "本地研究库也没有匹配记录。",
+    query,
+    totalCount: matches.length,
+    cards: matches.map((card) => {
+      const latestHistory = card.history?.at(-1);
+      const sourceLink = (card.links || [])[0];
+      return {
+        id: `local-${card.id}`,
+        name: [card.cnName, card.name].filter(Boolean).join(" / "),
+        setName: card.set || "本地研究库",
+        setSeries: card.category || "",
+        releaseDate: latestHistory?.date || "",
+        number: card.number || "",
+        rarity: card.grade || "",
+        imageSmall: "",
+        imageLarge: "",
+        sourceLabel: "本地估值，非实时",
+        sourceUrl: sourceLink?.url || "",
+        referencePriceCny: latestHistory?.priceCny || null,
+      };
+    }),
+  };
 }
 
 async function getEbayToken() {
@@ -647,6 +766,7 @@ function cardSearchQuery(query) {
 
 async function fetchPokemonCatalog(query) {
   const name = pokemonCatalogQuery(query);
+  const cardNumber = pokemonCardNumber(query);
   if (!name || /[\u4e00-\u9fff]/.test(name)) {
     return {
       ok: false,
@@ -658,7 +778,10 @@ async function fetchPokemonCatalog(query) {
   }
 
   const url = new URL("https://api.pokemontcg.io/v2/cards");
-  url.searchParams.set("q", `name:"${escapePokemonQuery(name)}"`);
+  url.searchParams.set(
+    "q",
+    [`name:"${escapePokemonQuery(name)}"`, cardNumber ? `number:${cardNumber}` : ""].filter(Boolean).join(" ")
+  );
   url.searchParams.set("page", "1");
   url.searchParams.set("pageSize", "80");
   url.searchParams.set("orderBy", "-set.releaseDate,number");
@@ -674,7 +797,7 @@ async function fetchPokemonCatalog(query) {
     const response = await fetchWithTimeout(url, { headers });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const payload = await withTimeout(response.json(), 5000, "Pokémon TCG JSON");
-    const cards = (payload.data || []).map((card) => {
+    const cards = (payload.data || []).filter((card) => matchesPokemonNumber(card.number, cardNumber)).map((card) => {
       const tcgPrice = firstPrice(card.tcgplayer?.prices);
       return {
         id: card.id,
@@ -707,7 +830,7 @@ async function fetchPokemonCatalog(query) {
       cards,
     };
   } catch (error) {
-    const fallback = await fetchTcgdexCatalog(name);
+    const fallback = await fetchTcgdexCatalog(name, cardNumber);
     return {
       ...fallback,
       provider: fallback.ok ? "TCGdex 图鉴兜底" : "Pokémon TCG API / TCGdex",
@@ -727,12 +850,12 @@ async function getTcgdexCards() {
   return cards;
 }
 
-async function fetchTcgdexCatalog(name) {
+async function fetchTcgdexCatalog(name, cardNumber = "") {
   try {
     const allCards = await getTcgdexCards();
     const needle = normalize(name);
     const matches = allCards
-      .filter((card) => normalize(card.name).includes(needle))
+      .filter((card) => normalize(card.name).includes(needle) && matchesPokemonNumber(card.localId, cardNumber))
       .sort((a, b) => String(b.id).localeCompare(String(a.id)))
       .slice(0, 120)
       .map((card) => ({
@@ -936,37 +1059,70 @@ function sendJson(res, status, body) {
   res.end(JSON.stringify(body));
 }
 
-export async function handleResearch(req, res, url) {
-  const query = (url.searchParams.get("q") || "").trim();
-  if (!query) {
-    sendJson(res, 400, { ok: false, message: "Missing q" });
-    return;
+async function providerWithTimeout(promise, provider, category) {
+  try {
+    return await withTimeout(promise, researchSourceTimeoutMs, provider);
+  } catch (error) {
+    return {
+      ok: false,
+      provider,
+      message: `${provider} 查询超时：${error.message}`,
+      query: "",
+      category,
+      totalCount: 0,
+      cards: [],
+      quotes: [],
+      candidates: [],
+    };
   }
+}
+
+const limitResearch = createConcurrencyLimiter(researchConcurrency);
+
+async function buildResearchPayload(query) {
   const checkedAt = new Date().toISOString();
+  const category = classifyResearchQuery(query);
+  const queryPokemon = category === "pokemon" || category === "generic";
+  const queryMagic = category === "magic" || category === "generic";
+  const queryYugioh = category === "yugioh" || category === "generic";
   const [ebay, priceCharting, pokemonCatalog, scryfallCatalog, yugiohCatalog] = await Promise.all([
-    fetchEbayListings(translatedQuery(query)),
-    fetchPriceChartingCandidates(query),
-    fetchPokemonCatalog(query),
-    fetchScryfallCatalog(translatedQuery(query)),
-    fetchYugiohCatalog(translatedQuery(query)),
+    providerWithTimeout(fetchEbayListings(translatedQuery(query)), "eBay Browse API", category),
+    providerWithTimeout(fetchPriceChartingCandidates(query), "PriceCharting", category),
+    queryPokemon
+      ? providerWithTimeout(fetchPokemonCatalog(query), "Pokémon TCG API", category)
+      : Promise.resolve(skippedCatalog("Pokémon TCG API", category)),
+    queryMagic
+      ? providerWithTimeout(fetchScryfallCatalog(translatedQuery(query)), "Scryfall API", category)
+      : Promise.resolve(skippedCatalog("Scryfall API", category)),
+    queryYugioh
+      ? providerWithTimeout(fetchYugiohCatalog(translatedQuery(query)), "YGOPRODeck API", category)
+      : Promise.resolve(skippedCatalog("YGOPRODeck API", category)),
   ]);
+  const localCatalog = queryPokemon && !(pokemonCatalog.cards || []).length
+    ? await fetchLocalCatalog(query)
+    : skippedCatalog("本地研究库兜底", category);
   const catalogCards = [
     ...(pokemonCatalog.cards || []),
+    ...(localCatalog.cards || []),
     ...(scryfallCatalog.cards || []),
     ...(yugiohCatalog.cards || []),
   ];
   const catalogTotalCount =
-    (pokemonCatalog.totalCount || 0) + (scryfallCatalog.totalCount || 0) + (yugiohCatalog.totalCount || 0);
+    (pokemonCatalog.totalCount || 0) +
+    (localCatalog.totalCount || 0) +
+    (scryfallCatalog.totalCount || 0) +
+    (yugiohCatalog.totalCount || 0);
   const providerQuotes = [
     ...(ebay.quotes || []),
     ...(scryfallCatalog.quotes || []),
     ...(yugiohCatalog.quotes || []),
   ];
-  const providers = [pokemonCatalog, scryfallCatalog, yugiohCatalog, ebay, priceCharting];
+  const providers = [pokemonCatalog, localCatalog, scryfallCatalog, yugiohCatalog, ebay, priceCharting];
 
-  sendJson(res, 200, {
+  return {
     ok: true,
     query,
+    category,
     checkedAt,
     links: externalLinks(query),
     requirements: accessRequirements(),
@@ -974,11 +1130,27 @@ export async function handleResearch(req, res, url) {
     quotes: providerQuotes,
     samples: ebay.samples || [],
     catalogCards,
-    catalogQuery: [pokemonCatalog.query, scryfallCatalog.query, yugiohCatalog.query].filter(Boolean).join(" / "),
+    catalogQuery: [pokemonCatalog.query, localCatalog.query, scryfallCatalog.query, yugiohCatalog.query]
+      .filter(Boolean)
+      .join(" / "),
     catalogTotalCount,
     priceChartingCandidates: priceCharting.candidates || [],
     notes: providers.map((provider) => provider.message),
-  });
+  };
+}
+
+const loadResearch = createCachedLoader(
+  (query) => limitResearch(() => buildResearchPayload(query)),
+  { ttlMs: researchCacheMs, maxEntries: 100 }
+);
+
+export async function handleResearch(req, res, url) {
+  const query = (url.searchParams.get("q") || "").trim();
+  if (!query) {
+    sendJson(res, 400, { ok: false, message: "Missing q" });
+    return;
+  }
+  sendJson(res, 200, await loadResearch(query));
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {

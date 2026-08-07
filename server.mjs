@@ -4,6 +4,7 @@ import path from "node:path";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { handleResearch } from "./card-research/server.mjs";
+import { sanitizeAuctionPayload } from "./scripts/api-policy.mjs";
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 const webRoot = path.join(root, "web");
@@ -50,7 +51,7 @@ let refreshProcess = null;
 async function readJsonWithFallback() {
   try {
     const live = JSON.parse(await fs.readFile(livePath, "utf8"));
-    return { ...live, mode: "live", lastRefreshError };
+    return { ...sanitizeAuctionPayload(live), mode: "live", lastRefreshError };
   } catch {
     const sample = JSON.parse(await fs.readFile(samplePath, "utf8"));
     return { ...sample, mode: "sample", lastRefreshError };
@@ -114,7 +115,11 @@ function runRefresh(reason = "scheduled") {
     });
     let stdout = "";
     let stderr = "";
-    const timeout = setTimeout(() => child.kill("SIGTERM"), refreshTimeoutMs);
+    let forceKillTimeout = null;
+    const timeout = setTimeout(() => {
+      child.kill("SIGTERM");
+      forceKillTimeout = setTimeout(() => child.kill("SIGKILL"), 10000);
+    }, refreshTimeoutMs);
     child.stdout.on("data", (chunk) => {
       stdout += chunk.toString();
     });
@@ -123,6 +128,7 @@ function runRefresh(reason = "scheduled") {
     });
     child.on("close", (code) => {
       clearTimeout(timeout);
+      clearTimeout(forceKillTimeout);
       refreshing = false;
       refreshCompletedAt = new Date().toISOString();
       if (code === 0) {
@@ -145,6 +151,15 @@ function runRefresh(reason = "scheduled") {
           (code === null ? `refresh exceeded ${Math.round(refreshTimeoutMs / 1000)} seconds` : `refresh exited with ${code}`);
         refreshResult = { ok: false, message: lastRefreshError };
       }
+      resolve(refreshResult);
+    });
+    child.on("error", (error) => {
+      clearTimeout(timeout);
+      clearTimeout(forceKillTimeout);
+      refreshing = false;
+      refreshCompletedAt = new Date().toISOString();
+      lastRefreshError = error.message;
+      refreshResult = { ok: false, message: lastRefreshError };
       resolve(refreshResult);
     });
   });
